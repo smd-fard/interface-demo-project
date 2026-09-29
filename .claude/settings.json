@@ -1,0 +1,27 @@
+{
+	"permissions": {
+		"allow": [
+			"Bash(pnpm install)",
+			"Bash(pnpm build:*)",
+			"Bash(pnpm typecheck:*)",
+			"Bash(pnpm lint:*)",
+			"Bash(pnpm test:*)",
+			"Bash(pnpm --filter:*)",
+			"Bash(pnpm exec vitest:*)",
+			"Bash(pnpm exec playwright install:*)",
+			"Bash(git status:*)",
+			"Bash(git diff:*)",
+			"Bash(git log:*)",
+			"Bash(git branch:*)",
+			"Bash(git switch:*)",
+			"Bash(bash .claude/skills/scaffold-package/scripts/scaffold.sh:*)"
+		],
+		"deny": [
+			"Read(./.env)",
+			"Read(./.env.local)",
+			"Read(./**/.env)",
+			"Bash(git push:*)"
+		]
+	},
+	"enabledMcpjsonServers": ["context7", "mermaid"]
+}

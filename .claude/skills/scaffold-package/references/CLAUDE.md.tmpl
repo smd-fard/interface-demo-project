@@ -1,0 +1,34 @@
+# @idp/__NAME__ — CLAUDE.md
+
+> Workspace: `__KIND__/__NAME__` · Root rules: [../../CLAUDE.md](../../CLAUDE.md)
+
+## Purpose
+
+<One paragraph: what this package owns and which requirement IDs (docs/requirements.md) it serves.>
+
+## Owns
+
+- <module / concept>
+
+## Never
+
+- <the invariants this package is most likely to break, e.g. "never imports @idp/agent", "never writes to a sink without redaction">
+
+## Allowed dependencies
+
+- <@idp/* packages to the left in the dependency direction, and third-party runtime deps>
+
+## Layout
+
+```
+src/
+  index.ts        barrel — the only public entry point
+test/functional/  (if any) end-to-end tests against apps/mock-bank
+```
+
+## Commands
+
+```bash
+pnpm --filter @idp/__NAME__ build
+pnpm --filter @idp/__NAME__ test
+```

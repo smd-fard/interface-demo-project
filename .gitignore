@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Build
+dist/
+*.tsbuildinfo
+.turbo/
+coverage/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Runtime scratch (raw, unredacted, or large run output). Only curated runs go in evidence/.
+.runs/
+playwright-report/
+test-results/
+
+# Claude local settings
+.claude/settings.local.json
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+*.swp
