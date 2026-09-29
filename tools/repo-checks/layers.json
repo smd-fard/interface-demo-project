@@ -1,0 +1,27 @@
+{
+	"$comment": "Machine-readable dependency direction (root CLAUDE.md). Read by @idp/repo-checks and eslint.config.js. Change together with the diagram.",
+	"layers": [
+		["@idp/artifact-schema"],
+		["@idp/policy"],
+		["@idp/evidence"],
+		["@idp/surface"],
+		["@idp/session"],
+		["@idp/replay-engine", "@idp/agent"],
+		["@idp/cli", "@idp/operator"]
+	],
+	"isolated": ["@idp/mock-bank"],
+	"tooling": ["@idp/typescript-config", "@idp/repo-checks"],
+	"owners": {
+		"playwright": "@idp/surface",
+		"playwright-core": "@idp/surface",
+		"@playwright/test": "@idp/surface",
+		"@anthropic-ai/sdk": "@idp/agent"
+	},
+	"runtimeAllowlist": {
+		"@idp/artifact-schema": ["zod"]
+	},
+	"forbiddenReach": [
+		{ "from": "@idp/replay-engine", "to": "@idp/agent" },
+		{ "from": "@idp/replay-engine", "to": "@anthropic-ai/sdk" }
+	]
+}

@@ -1,0 +1,20 @@
+{
+	"name": "@idp/typescript-config",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Shared strict ESM tsconfig bases for the @idp workspaces.",
+	"files": [
+		"*.json"
+	],
+	"exports": {
+		"./base.json": "./base.json"
+	},
+	"scripts": {
+		"test": "vitest run"
+	},
+	"devDependencies": {
+		"@types/node": "catalog:",
+		"vitest": "catalog:"
+	}
+}

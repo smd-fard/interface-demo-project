@@ -14,15 +14,38 @@ When the system gets stuck, a human takes over the same live session and hands i
 
 ## Setup
 
-_TBD (`monorepo-foundation`): Node ≥ 22, pnpm, `pnpm install`, `pnpm exec playwright install chromium`._
+Requires Node ≥ 22.13 (`.nvmrc` pins major 22; `.npmrc` sets `engine-strict=true`) and pnpm via Corepack
+(the version comes from `packageManager` in `package.json`).
+
+```bash
+nvm use                # Node 22 from .nvmrc
+corepack enable        # provides the pinned pnpm
+pnpm install
+pnpm build             # turbo run build
+pnpm test              # unit + functional tests (no API key, no browser, no network)
+pnpm lint              # ESLint + dependency-boundary checks (pnpm boundaries)
+pnpm format:check      # Prettier
+```
+
+Other root scripts: `pnpm typecheck`, `pnpm format`, `pnpm boundaries`, `pnpm clean`.
+
+_Planned (`web-surface`): `pnpm exec playwright install chromium` becomes a setup step once the Playwright
+surface ships. It is not needed today._
 
 ### Configuration
 
-_TBD: `.env` from `.env.example` (`ANTHROPIC_API_KEY` is needed for discovery only; replay runs without it)._
+```bash
+cp .env.example .env   # gitignored; never commit real values
+```
+
+Only discovery needs `ANTHROPIC_API_KEY`; replay and the tests never use it. `CONTEXT7_API_KEY` is optional
+(developer-docs MCP server only).
 
 ### Running without live services
 
-_TBD: replay and the test suite need no API key. The target app (`apps/mock-bank`) runs locally._
+The test suite (`pnpm test`) needs no API key, no browser and no network. _Planned: the target app
+(`apps/mock-bank`) will run locally via `pnpm mock-bank`, added by its spec; replay will run against it
+without an API key._
 
 ## Demo path
 

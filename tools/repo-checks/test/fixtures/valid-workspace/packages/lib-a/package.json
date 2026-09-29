@@ -1,0 +1,16 @@
+{
+	"name": "@fixture/lib-a",
+	"private": true,
+	"dependencies": {
+		"zod": "^4.0.0"
+	},
+	"devDependencies": {
+		"@fixture/tool-c": "workspace:*"
+	},
+	"peerDependencies": {
+		"left-pad": "^1.0.0"
+	},
+	"optionalDependencies": {
+		"fsevents": "^2.0.0"
+	}
+}

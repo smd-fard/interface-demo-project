@@ -30,8 +30,8 @@ User input: $ARGUMENTS
 ## Step 3. Branch
 
 - **On `main`:** if `git remote` lists `origin`, run `git fetch origin` then `git pull --ff-only`, and abort
-  if main has diverged. With no remote (the default for this repo) skip both. Then
-  `git switch -c <branch_name>`.
+  if main has diverged. With no remote, skip both. Then `git switch -c <branch_name>`. Never push the new
+  branch; the user pushes.
 - **Not on `main`:** ask exactly:
   > You are on `<current_branch>`. Create `<branch_name>` from it (not from `main`)?
 

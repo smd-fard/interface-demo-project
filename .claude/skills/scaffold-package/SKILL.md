@@ -21,7 +21,16 @@ Creates `<kind>/<name>/` with the canonical shape. The copy and substitute step 
   packages to the left. `apps/mock-bank` gets **no** `@idp/*` deps at all.
 - Only `@idp/surface` may depend on `playwright`. Only `@idp/agent` may depend on `@anthropic-ai/sdk`.
   `@idp/artifact-schema` may depend only on `zod`.
-- ESM (`"type": "module"`), strict TS, `exports` pointing at `dist/`. Build is `tsc -b`.
+- ESM (`"type": "module"`), strict TS, `exports` pointing at `dist/`. Two tsconfigs: `tsconfig.json`
+  (`noEmit`, includes tests and `vitest.config.ts`; used by `typecheck` and the editor) and
+  `tsconfig.build.json` (emits `src/` → `dist/`, excludes tests). Build is `tsc -b tsconfig.build.json`.
+- Shared dev tools (`typescript`, `vitest`, `@types/node`, `rimraf`, and `tsx` for apps) are declared as
+  `catalog:` devDependencies; versions live once in the `catalog` of `pnpm-workspace.yaml`. Third-party
+  runtime deps should be added to the catalog too and referenced as `catalog:`.
+- There is no per-package `lint` script. Lint and format run once at the root (`pnpm lint`,
+  `pnpm format:check`).
+- Every new workspace must be added to `tools/repo-checks/layers.json`, or the boundary check fails with
+  `BND008`.
 - Tests: Vitest. Unit tests go next to the source; functional tests go in `test/functional/`.
 
 ## Steps
@@ -39,8 +48,9 @@ Creates `<kind>/<name>/` with the canonical shape. The copy and substitute step 
    `pnpm view <pkg> version` when unsure). Add `@idp/*` deps as `workspace:*`.
 5. **Register.** Make sure `pnpm-workspace.yaml` covers the path (the default globs `packages/*` and `apps/*`
    already do; if the file lists paths explicitly, add it alphabetically).
-6. **Verify.** `pnpm install && pnpm --filter @idp/<name> build && pnpm --filter @idp/<name> test`. An empty
-   package must build, and its placeholder test must pass.
+6. **Verify.** `pnpm install && pnpm --filter @idp/<name> build && pnpm --filter @idp/<name> typecheck &&
+   pnpm --filter @idp/<name> test`. An empty package must build and typecheck, and its placeholder test
+   must pass.
 7. **Report:**
    ```
    Package: @idp/<name> (<kind>/<name>, <flavor>)
@@ -52,6 +62,7 @@ Creates `<kind>/<name>/` with the canonical shape. The copy and substitute step 
 
 @references/package.json.tmpl
 @references/tsconfig.json.tmpl
+@references/tsconfig.build.json.tmpl
 @references/vitest.config.ts.tmpl
 @references/index.test.ts.tmpl
 @references/CLAUDE.md.tmpl
