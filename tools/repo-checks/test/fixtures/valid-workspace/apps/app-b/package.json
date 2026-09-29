@@ -1,0 +1,7 @@
+{
+	"name": "@fixture/app-b",
+	"private": true,
+	"dependencies": {
+		"@fixture/lib-a": "workspace:*"
+	}
+}

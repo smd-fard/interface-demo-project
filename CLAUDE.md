@@ -21,18 +21,21 @@ apps that have no API. The requirements are in [`docs/requirements.md`](docs/req
 5. **Guard** — every action passes the policy (allowlist + risk class). Sensitive data is redacted
    before it reaches any sink.
 
-## Tech stack (decided — see `docs/adr/`)
+## Tech stack (decided — see [ADR-0001](docs/adr/0001-stack-and-workspace-layout.md) and `docs/adr/`)
 
 TypeScript (strict, ESM) on Node ≥ 22 · pnpm workspaces + Turborepo · Zod (contracts + JSON Schema
 export) · Playwright (web surface; the accessibility tree is the primary perception) · Anthropic SDK
-(Claude, tool calling) · pino (structured logs) · Vitest (unit + functional). There is no database:
-artifacts, policy and evidence are files.
+(Claude, tool calling) · pino (structured logs) · Vitest (unit + functional) · ESLint (typescript-eslint) +
+Prettier. TypeScript is pinned to 6.0.x (the typescript-eslint peer range). Shared dependency versions live in
+the pnpm `catalog:` in `pnpm-workspace.yaml`. There is no database: artifacts, policy and evidence are files.
 
 ## Workspace map
 
-Package scope is `@idp/*`. **Status: planned.** The workspace is scaffolded by the first spec
-(`_design/roadmap.md` → `monorepo-foundation`). Until a package exists, treat this map as the
-intended design, not as fact.
+Package scope is `@idp/*`. **Status: scaffolded, shells empty until their spec.** Every workspace below
+exists (created by `monorepo-foundation`) and builds, typechecks and tests, but apart from
+`typescript-config` and `tools/repo-checks` each is an empty shell. What a package "Owns" is its intended
+responsibility; it is real only once its spec in [`_design/roadmap.md`](_design/roadmap.md) ships
+(status in [`_design/index.md`](_design/index.md)).
 
 | Path                          | Package                 | Owns                                                                                                                                                              |
 | ----------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -47,12 +50,17 @@ intended design, not as fact.
 | `apps/cli`                    | `@idp/cli`              | `discover`, `replay`, `catalog`, `operator` commands — the demo path.                                                                                            |
 | `apps/operator`               | `@idp/operator`         | Minimal (deliberately mocked) operator console: list interventions, take control, resume.                                                                         |
 | `apps/mock-bank`              | `@idp/mock-bank`        | The **proxy target**: a hostile legacy core-banking web app (framesets, nested tables, no test IDs) with fault-injection switches and a tenant variant. Synthetic data only. |
+| `tools/repo-checks`           | `@idp/repo-checks`      | Tooling. Dependency-boundary checks (BND001–BND009) from `layers.json`; runs in `pnpm lint`. Not part of the dependency direction below. |
 
 ### Dependency direction (enforced)
 
 ```
 artifact-schema ← policy ← evidence ← surface ← session ← { replay-engine, agent } ← { cli, operator }
 ```
+
+Enforced by [`tools/repo-checks/layers.json`](tools/repo-checks/layers.json) (the machine-readable form of
+this diagram) through `pnpm boundaries` (run by `pnpm lint`) and ESLint `no-restricted-imports`. The diagram
+and `layers.json` must change together.
 
 - Packages import only from packages to their **left**. There are no cycles.
 - **`apps/mock-bank` imports nothing from `packages/*`, and nothing imports it.** The system treats the
@@ -122,17 +130,23 @@ Generator skills (used by `implement-plan`, or directly): `scaffold-package`, `d
 
 ## Commands
 
-The root tooling is created by the `monorepo-foundation` spec. Until then these are the intended commands.
+Root scripts (from the root `package.json`). Node ≥ 22.13 (`.nvmrc`, `engine-strict`); pnpm comes from
+`packageManager` via Corepack.
 
 ```bash
 pnpm install
-pnpm build          # turbo run build (tsc -b per package)
-pnpm typecheck
-pnpm lint
-pnpm test           # turbo run test — unit + functional, no real LLM
-pnpm mock-bank      # start the proxy target app
-pnpm idp <command>  # the CLI: discover | replay | catalog | operator
+pnpm build          # turbo run build (tsc -b tsconfig.build.json per workspace)
+pnpm typecheck      # turbo run typecheck
+pnpm lint           # eslint . && pnpm boundaries
+pnpm test           # turbo run test — unit + functional, no real LLM, no browser, no network
+pnpm format         # prettier --write .
+pnpm format:check   # prettier --check .
+pnpm boundaries     # @idp/repo-checks: dependency-boundary checks against layers.json
+pnpm clean          # turbo run clean + remove .turbo
 ```
 
-Git: local only (no remote until submission). Feature branches `feature/<slug>` branch from and merge back
-into `main`.
+Added by their specs (not yet available): `pnpm mock-bank` (start the proxy target app) and
+`pnpm idp <command>` (the CLI: `discover | replay | catalog | operator`).
+
+Git: `origin` is the GitHub repo. Feature branches `feature/<slug>` branch from and merge back into `main`
+locally. Claude never pushes (`git push` is denied in `.claude/settings.json`); the user pushes.

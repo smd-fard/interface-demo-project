@@ -1,0 +1,21 @@
+{
+	"name": "@idp/repo-checks",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Repository boundary checks: enforces the layer model in layers.json against every workspace manifest.",
+	"scripts": {
+		"check": "tsx src/cli.ts",
+		"typecheck": "tsc --noEmit",
+		"test": "vitest run",
+		"test:watch": "vitest"
+	},
+	"devDependencies": {
+		"@idp/typescript-config": "workspace:*",
+		"@types/node": "catalog:",
+		"eslint": "catalog:",
+		"tsx": "catalog:",
+		"typescript": "catalog:",
+		"vitest": "catalog:"
+	}
+}

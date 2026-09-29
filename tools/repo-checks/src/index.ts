@@ -1,0 +1,11 @@
+export { BOUNDARY_RULES } from './BoundaryViolation.js';
+export type { BoundaryCode, BoundaryViolation } from './BoundaryViolation.js';
+export { checkBoundaries } from './checkBoundaries.js';
+export { formatViolations } from './formatViolations.js';
+export { LayersConfigError } from './LayersConfigError.js';
+export { loadLayerModel, parseLayerModel } from './LayerModel.js';
+export type { ForbiddenReach, LayerModel } from './LayerModel.js';
+export { DEPENDENCY_SECTIONS } from './WorkspaceGraph.js';
+export type { DependencySection, WorkspaceGraph, WorkspaceNode } from './WorkspaceGraph.js';
+export { readWorkspaceGraph } from './readWorkspaceGraph.js';
+export { WorkspaceReadError } from './WorkspaceReadError.js';

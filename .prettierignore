@@ -1,0 +1,7 @@
+# Prose and tables are hand-formatted.
+**/*.md
+pnpm-lock.yaml
+**/dist
+.turbo
+coverage
+evidence/
