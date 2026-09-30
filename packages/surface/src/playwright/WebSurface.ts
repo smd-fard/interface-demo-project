@@ -27,6 +27,7 @@ import { buildA11yTree, type RefTarget } from '../snapshot/a11ySnapshot.js';
 import { observationDigest } from '../snapshot/observationDigest.js';
 import { captureFrames } from './captureFrames.js';
 import { evaluateCheckpoint } from './evaluateCheckpoint.js';
+import { titleOrEmpty } from './frameReads.js';
 import type { NavigationTracker } from './NavigationTracker.js';
 
 type AriaRole = Parameters<Frame['getByRole']>[0];
@@ -46,7 +47,13 @@ export interface WebSurfaceDeps {
 
 const DEFAULT_MAX_TEXT = 20_000;
 const SNAPSHOT_TIMEOUT_MS = 5_000;
+/** Pause between two checkpoint evaluations while `check` polls. */
 const POLL_MS = 100;
+/**
+ * How long resolving a ladder target waits for a late element (an act's is also capped by its own bound). The
+ * guard's `describe` before a targeted act is where replay waits; the act's own resolve then finds it at once.
+ */
+export const RESOLVE_TIMEOUT_MS = 5_000;
 
 /** The Playwright web adapter behind the `Surface` port. Browser objects never leave this class. */
 export class WebSurface implements Surface {
@@ -93,14 +100,21 @@ export class WebSurface implements Surface {
 		};
 	}
 
-	private resolveLadder(target: TargetRef, bindings: Bindings): Promise<LadderMatch<Frame, Locator>> {
-		return this.ladder.resolve(target, bindings);
+	private resolveLadder(
+		target: TargetRef,
+		bindings: Bindings,
+		timeoutMs: number,
+	): Promise<LadderMatch<Frame, Locator>> {
+		return this.ladder.resolve(target, bindings, timeoutMs);
 	}
 
-	/** Resolves a TargetRef ladder or an observation ref to one element (the seam executors use). */
-	private async resolveTarget(target: ActionTarget, bindings: Bindings): Promise<ResolvedTarget> {
+	/**
+	 * Resolves a TargetRef ladder (polling up to `timeoutMs` for a late element) or an observation ref to one
+	 * element (the seam executors use).
+	 */
+	private async resolveTarget(target: ActionTarget, bindings: Bindings, timeoutMs: number): Promise<ResolvedTarget> {
 		if (target.kind === 'target') {
-			const match = await this.resolveLadder(target.target, bindings);
+			const match = await this.resolveLadder(target.target, bindings, timeoutMs);
 			return {
 				frame: match.frame,
 				locator: match.locator,
@@ -115,7 +129,7 @@ export class WebSurface implements Surface {
 
 	async resolve(target: TargetRef, bindings: Bindings = {}): Promise<Resolution> {
 		this.assertOpen();
-		const match = await this.resolveLadder(target, bindings);
+		const match = await this.resolveLadder(target, bindings, RESOLVE_TIMEOUT_MS);
 		const fingerprint = await fingerprintElement(match.frame, match.locator);
 		return { rungIndex: match.rungIndex, rungKind: match.rungKind, fingerprint };
 	}
@@ -127,7 +141,8 @@ export class WebSurface implements Surface {
 			origin: this.deps.origin,
 			dialogs: this.deps.dialogs,
 			navigation: this.deps.navigation,
-			resolveTarget: (target, bindings) => this.resolveTarget(target, bindings),
+			resolveTarget: (target, bindings) =>
+				this.resolveTarget(target, bindings, Math.min(action.timeoutMs ?? RESOLVE_TIMEOUT_MS, RESOLVE_TIMEOUT_MS)),
 			check: (checkpoint, bindings, timeoutMs) => this.check(checkpoint, bindings, timeoutMs),
 		};
 		return executeAction(context, action);
@@ -141,7 +156,8 @@ export class WebSurface implements Surface {
 			const result: CheckResult =
 				dialog === null
 					? await evaluateCheckpoint(
-							{ page: this.deps.page, resolve: (target, b) => this.resolveLadder(target, b) },
+							// A single ladder pass per evaluation: `check` itself polls until its bound.
+							{ page: this.deps.page, resolve: (target, b) => this.resolveLadder(target, b, 0) },
 							checkpoint,
 							bindings,
 						)
@@ -154,7 +170,7 @@ export class WebSurface implements Surface {
 
 	async describe(target: ActionTarget, bindings: Bindings = {}): Promise<ElementFingerprint> {
 		this.assertOpen();
-		const resolved = await this.resolveTarget(target, bindings);
+		const resolved = await this.resolveTarget(target, bindings, RESOLVE_TIMEOUT_MS);
 		return fingerprintElement(resolved.frame, resolved.locator);
 	}
 
@@ -186,7 +202,7 @@ export class WebSurface implements Surface {
 					path: framePathOf(frame),
 					name: frame.name(),
 					url: frame.url(),
-					title: domAccess ? await frame.title().catch(() => '') : '',
+					title: domAccess ? await titleOrEmpty(frame) : '',
 				})),
 		);
 		return { url: this.deps.page.url(), title: frames[0]?.title ?? '', frames };

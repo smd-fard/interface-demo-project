@@ -11,6 +11,14 @@ export interface ModelRequest {
 	readonly tools: readonly ModelToolSpec[];
 }
 
+/** Per-call options: the loop passes its remaining time budget so a call cannot outlive the run (FR9). */
+export interface ModelCallOptions {
+	/** Aborted when the discovery time budget runs out; a client should stop the call (and its retries). */
+	readonly signal?: AbortSignal;
+	/** The remaining budget in ms; a client caps its per-request timeout at it. */
+	readonly timeoutMs?: number;
+}
+
 /**
  * The model port of the discovery loop. `AnthropicModelClient` is the real adapter; `ScriptedModel` is the
  * deterministic fake used by tests and by keyless discovery. Only `@idp/agent` implements it; replay never
@@ -19,5 +27,9 @@ export interface ModelRequest {
 export interface ModelClient {
 	/** A label for manifests and logs, e.g. `anthropic:claude-sonnet-5-5` or `scripted:member-lookup`. */
 	readonly modelId: string;
-	next(request: ModelRequest): Promise<ModelTurn>;
+	/**
+	 * One model turn.
+	 * @throws ModelCallError when the provider call fails after its retries (or is aborted by `options.signal`).
+	 */
+	next(request: ModelRequest, options?: ModelCallOptions): Promise<ModelTurn>;
 }

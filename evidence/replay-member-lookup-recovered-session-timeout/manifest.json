@@ -1,0 +1,15 @@
+{
+	"runId": "replay-20260930T191849-176f",
+	"kind": "replay",
+	"startedAt": "2026-09-30T19:18:49.548Z",
+	"endedAt": "2026-09-30T19:18:51.986Z",
+	"artifact": {
+		"id": "member-lookup",
+		"version": "1.0.0",
+		"contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
+	},
+	"resultKind": "success",
+	"evidence": [],
+	"logPath": "run.jsonl",
+	"redactionRulesVersion": "1.2.0"
+}

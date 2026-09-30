@@ -118,6 +118,14 @@ describe('agent: scripted discovery of member-lookup compiles an artifact (AC1 s
 		const decisions = entries.filter((entry) => entry.kind === 'decision');
 		expect(decisions).toHaveLength(model.requests.length);
 		expect(decisions[0]).toMatchObject({ tool: 'navigate', reason: 'Open the application entry page.' });
+		// FR10: every decision carries the (synthetic) response metadata of its turn.
+		expect(decisions.map((entry) => entry.kind === 'decision' && entry.modelResponse?.responseId)).toEqual(
+			decisions.map((_entry, index) => `scripted-${index + 1}`),
+		);
+		// FR13: observation digests survive the run-log redaction intact (no `sha256:5899f68e40f[•••45]`).
+		const digests = entries.flatMap((entry) => (entry.kind === 'observation' ? [entry.digest] : []));
+		expect(digests.length).toBeGreaterThan(0);
+		for (const digest of digests) expect(digest).toMatch(/^sha256:[0-9a-f]{16}$/);
 		expect(entries.some((entry) => entry.kind === 'run_started')).toBe(true);
 		expect(entries.filter((entry) => entry.kind === 'result')).toEqual([
 			expect.objectContaining({ resultKind: 'success' }),

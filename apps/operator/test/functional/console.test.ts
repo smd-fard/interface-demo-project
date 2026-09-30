@@ -8,12 +8,22 @@ import { OperatorServer } from '../../src/server.js';
 import { fakeSessionTarget, SCREENSHOT_BYTES, type FakeSessionTarget } from './fakeSessionTarget.js';
 
 const MAIN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../dist/main.js');
+const LOGIN_KEY = 'functionalConsoleLoginKey'.repeat(2);
 
 interface ConsoleUnderTest {
 	readonly target: FakeSessionTarget;
 	readonly control: ControlServer;
 	readonly operator: OperatorServer;
 	readonly bodies: string[];
+	/** The session cookie from the login. */
+	readonly cookie: string;
+}
+
+/** Logs in with the one-time key and returns the `Cookie` header value for the session. */
+async function login(url: string, key = LOGIN_KEY): Promise<string> {
+	const response = await fetch(`${url}/login?k=${key}`, { redirect: 'manual' });
+	expect(response.status).toBe(303);
+	return (response.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
 }
 
 describe('operator console over a real ControlServer', () => {
@@ -37,14 +47,15 @@ describe('operator console over a real ControlServer', () => {
 		const operator = await OperatorServer.start({
 			control: new ControlClient({ url: control.url, token: control.token }),
 			port: 0,
+			loginKey: LOGIN_KEY,
 		});
-		const started = { target, control, operator, bodies: [] };
+		const started = { target, control, operator, bodies: [], cookie: await login(operator.url) };
 		running.push(started);
 		return started;
 	};
 
 	const get = async (app: ConsoleUnderTest, route: string): Promise<Response & { readonly text: string }> => {
-		const response = await fetch(`${app.operator.url}${route}`);
+		const response = await fetch(`${app.operator.url}${route}`, { headers: { cookie: app.cookie } });
 		const text = await response.clone().text();
 		app.bodies.push(text, JSON.stringify([...response.headers]));
 		return Object.assign(response, { text });
@@ -61,7 +72,11 @@ describe('operator console over a real ControlServer', () => {
 		const response = await fetch(`${app.operator.url}${route}`, {
 			method: 'POST',
 			redirect: 'manual',
-			headers: { 'content-type': 'application/x-www-form-urlencoded', origin: app.operator.url },
+			headers: {
+				'content-type': 'application/x-www-form-urlencoded',
+				origin: app.operator.url,
+				cookie: app.cookie,
+			},
 			body: new URLSearchParams({ formToken: await formToken(app), operator: 'ops-1', ...fields }).toString(),
 		});
 		app.bodies.push(await response.clone().text(), JSON.stringify([...response.headers]));
@@ -123,7 +138,7 @@ describe('operator console over a real ControlServer', () => {
 
 	it('streams the masked screenshot bytes through the evidence proxy', async () => {
 		const app = await start('takeover');
-		const response = await fetch(`${app.operator.url}/evidence/screenshot-0001`);
+		const response = await fetch(`${app.operator.url}/evidence/screenshot-0001`, { headers: { cookie: app.cookie } });
 		expect(response.status).toBe(200);
 		expect(response.headers.get('content-type')).toBe('image/png');
 		expect(new Uint8Array(await response.arrayBuffer())).toEqual(SCREENSHOT_BYTES);
@@ -135,10 +150,28 @@ describe('operator console over a real ControlServer', () => {
 		const response = await fetch(`${app.operator.url}/abort`, {
 			method: 'POST',
 			redirect: 'manual',
-			headers: { 'content-type': 'application/x-www-form-urlencoded' },
+			headers: { 'content-type': 'application/x-www-form-urlencoded', cookie: app.cookie },
 			body: 'operator=ops-1',
 		});
 		expect(response.status).toBe(403);
+		expect(app.target.calls).toEqual([]);
+		expect(app.target.lease().state).toBe('PAUSED');
+	});
+
+	it('without the login another local process cannot read or approve: 401, the session untouched (FR5)', async () => {
+		const app = await start('approval');
+		const id = app.target.request().id;
+		expect((await fetch(`${app.operator.url}/`)).status).toBe(401);
+		expect((await fetch(`${app.operator.url}/api/state`)).status).toBe(401);
+		const approve = await fetch(`${app.operator.url}/interventions/${id}/approve`, {
+			method: 'POST',
+			redirect: 'manual',
+			headers: { 'content-type': 'application/x-www-form-urlencoded', origin: app.operator.url },
+			body: 'operator=ops-1&formToken=x',
+		});
+		expect(approve.status).toBe(401);
+		// The login key works once: a second process presenting it gets no session.
+		expect((await fetch(`${app.operator.url}/login?k=${LOGIN_KEY}`, { redirect: 'manual' })).status).toBe(401);
 		expect(app.target.calls).toEqual([]);
 		expect(app.target.lease().state).toBe('PAUSED');
 	});
@@ -152,7 +185,7 @@ describe('operator console process (dist/main.js)', () => {
 		});
 
 	it('exits 64 with a clear message when the control URL or token is missing', async () => {
-		const child = run({ IDP_CONTROL_URL: 'http://127.0.0.1:1' });
+		const child = run({ IDP_CONTROL_URL: 'http://127.0.0.1:1', IDP_OPERATOR_KEY: LOGIN_KEY });
 		let stderr = '';
 		child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
 		const [code] = (await once(child, 'exit')) as [number | null];
@@ -160,22 +193,37 @@ describe('operator console process (dist/main.js)', () => {
 		expect(stderr).toContain('IDP_CONTROL_TOKEN');
 	});
 
-	it('prints its URL (never the token) and serves the console', async () => {
+	it('exits 64 when the console login key is missing', async () => {
+		const child = run({ IDP_CONTROL_URL: 'http://127.0.0.1:1', IDP_CONTROL_TOKEN: 'ab'.repeat(32) });
+		let stderr = '';
+		child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+		const [code] = (await once(child, 'exit')) as [number | null];
+		expect(code).toBe(64);
+		expect(stderr).toContain('IDP_OPERATOR_KEY');
+	});
+
+	it('prints its one-time login URL (never the token) and serves the console after login', async () => {
 		const target = await fakeSessionTarget('takeover');
 		const control = await ControlServer.start({ target, port: 0 });
-		const child = run({ IDP_CONTROL_URL: control.url, IDP_CONTROL_TOKEN: control.token, IDP_OPERATOR_PORT: '0' });
+		const child = run({
+			IDP_CONTROL_URL: control.url,
+			IDP_CONTROL_TOKEN: control.token,
+			IDP_OPERATOR_KEY: LOGIN_KEY,
+			IDP_OPERATOR_PORT: '0',
+		});
 		try {
 			let stdout = '';
 			const url = await new Promise<string>((resolve, reject) => {
 				child.stdout.on('data', (chunk: Buffer) => {
 					stdout += chunk.toString();
-					const match = /operator console at (http:\/\/127\.0\.0\.1:\d+)/.exec(stdout);
-					if (match?.[1] !== undefined) resolve(match[1]);
+					const match = /operator console at (http:\/\/127\.0\.0\.1:\d+)\/login\?k=([A-Za-z0-9_-]+)\n/.exec(stdout);
+					if (match?.[1] !== undefined && match[2] === LOGIN_KEY) resolve(match[1]);
 				});
 				child.once('exit', (code) => reject(new Error(`operator exited early with ${String(code)}`)));
 			});
 			expect(stdout).not.toContain(control.token);
-			const response = await fetch(`${url}/api/state`);
+			expect((await fetch(`${url}/api/state`)).status).toBe(401);
+			const response = await fetch(`${url}/api/state`, { headers: { cookie: await login(url) } });
 			expect(response.status).toBe(200);
 			expect(((await response.json()) as { lease: { state: string } }).lease.state).toBe('PAUSED');
 		} finally {

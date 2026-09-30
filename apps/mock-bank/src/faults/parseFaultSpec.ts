@@ -1,7 +1,7 @@
 import { FaultSpecError } from '../errors/FaultSpecError.js';
 import { FAULT_CODES, FAULT_DEFAULTS, isFaultCode, type FaultCode, type FaultMode } from './faultCodes.js';
 
-/** A requested fault. `route` absent = the code's default routes. `delayMs` applies to `slow_load`. */
+/** A requested fault. `route` absent = the code's default routes. `delayMs` applies to `slow_load` and `late_render`. */
 export interface FaultSpec {
 	readonly code: FaultCode;
 	readonly mode: FaultMode;

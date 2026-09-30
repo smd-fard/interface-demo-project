@@ -8,7 +8,7 @@ export interface StopOptions {
 	readonly maxSteps: number;
 	/** Wall-clock budget, on the injected clock. Default 300 000 ms. */
 	readonly timeoutMs: number;
-	/** The same observation digest this many times in a row, with no progress, is a dead end. Default 3. */
+	/** This many consecutive no-progress turns (an action that left the screen unchanged) is a dead end. Default 3. */
 	readonly deadEndRepeats: number;
 	/** This many policy denials in a row stop the run. Default 3. */
 	readonly policyBlockedLimit: number;
@@ -33,6 +33,11 @@ export interface ActionRecord {
 	readonly after: string;
 	/** True when the action moved the run forward without changing the screen (an extract). */
 	readonly progress: boolean;
+	/**
+	 * True for an action that legitimately changes only a field value (a fill or select): an unchanged digest is
+	 * expected, so it neither counts as a no-progress turn nor resets the count.
+	 */
+	readonly valueOnly?: boolean;
 }
 
 /**
@@ -40,10 +45,12 @@ export interface ActionRecord {
  * before each model call (budgets) and reports what each turn did; a method returns the stop reason when a
  * condition trips, else `null`.
  *
- * - `max_steps` / `timeout`: checked before a model call.
- * - `dead_end`: over the digests of consecutive performed actions without progress — the same digest
- *   `deadEndRepeats` times in a row, or an A-B-A-B oscillation. Refused and failed actions are not in the
- *   window (they count toward the step budget and, for denials, `policy_blocked`); progress resets it.
+ * - `max_steps` / `timeout`: checked before a model call; the loop also bounds each call by `remainingMs()`.
+ * - `dead_end`: one entry per performed action (turn). `deadEndRepeats` consecutive no-progress turns — actions
+ *   whose post-action digest equals the pre-action digest, a value-only fill/select excepted — or an A-B-A-B
+ *   oscillation over the screens visited. A screen change resets the no-progress count. Refused and failed
+ *   actions are not in the window (they count toward the step budget and, for denials, `policy_blocked`);
+ *   progress resets it.
  * - `policy_blocked`: `policyBlockedLimit` denials with no performed action in between.
  * - `goal_unverified`: `unverifiedFinishLimit` finishes whose checkpoint did not hold (not necessarily in a row).
  */
@@ -53,6 +60,7 @@ export class StopConditions {
 	readonly #startedAt: number;
 	#turns = 0;
 	#window: string[] = [];
+	#noProgress = 0;
 	#denials = 0;
 	#unverified = 0;
 
@@ -79,6 +87,11 @@ export class StopConditions {
 		return this.#clock.now().getTime() - this.#startedAt;
 	}
 
+	/** Milliseconds left of the time budget (at least 1): the bound of the next model call. */
+	remainingMs(): number {
+		return Math.max(1, this.options.timeoutMs - this.elapsedMs());
+	}
+
 	/** Checked before each model call: `max_steps`, then `timeout`. */
 	beforeTurn(): StopReason | null {
 		if (this.#turns >= this.options.maxSteps) return 'max_steps';
@@ -96,16 +109,21 @@ export class StopConditions {
 		this.#denials = 0;
 		if (record.progress) {
 			this.#window = [record.after];
+			this.#noProgress = 0;
 			return null;
 		}
-		if (this.#window.length === 0 || this.#window.at(-1) !== record.before) this.#window.push(record.before);
-		this.#window.push(record.after);
+		// The window holds the distinct screens visited in order (no consecutive duplicates), for oscillation.
+		if (this.#window.at(-1) !== record.before) this.#window.push(record.before);
+		if (this.#window.at(-1) !== record.after) this.#window.push(record.after);
+		if (record.after !== record.before) this.#noProgress = 0;
+		else if (record.valueOnly !== true) this.#noProgress += 1;
 		return this.#deadEnd() ? 'dead_end' : null;
 	}
 
 	/** Progress without an action (a declared output): resets the dead-end window. */
 	recordProgress(): void {
 		this.#window = [];
+		this.#noProgress = 0;
 	}
 
 	/** A policy denial (or an unapproved irreversible action). */
@@ -123,14 +141,13 @@ export class StopConditions {
 	/** After a human handoff the screen is new ground: clears the dead-end window and the denial count. */
 	resetAfterHandoff(): void {
 		this.#window = [];
+		this.#noProgress = 0;
 		this.#denials = 0;
 	}
 
 	#deadEnd(): boolean {
+		if (this.#noProgress >= this.options.deadEndRepeats) return true;
 		const window = this.#window;
-		const repeats = this.options.deadEndRepeats;
-		const tail = window.slice(-repeats);
-		if (tail.length === repeats && tail.every((digest) => digest === tail[0])) return true;
 		const [a, b, c, d] = window.slice(-4);
 		return window.length >= 4 && a !== b && a === c && b === d;
 	}

@@ -1,8 +1,8 @@
 {
-	"runId": "replay-20260930T034105-5c39",
+	"runId": "replay-20260930T191929-b480",
 	"kind": "replay",
-	"startedAt": "2026-09-30T03:41:05.171Z",
-	"endedAt": "2026-09-30T03:41:21.648Z",
+	"startedAt": "2026-09-30T19:19:29.505Z",
+	"endedAt": "2026-09-30T19:19:33.054Z",
 	"artifact": {
 		"id": "open-sub-account",
 		"version": "1.0.1",
@@ -29,20 +29,20 @@
 		{
 			"id": "json-0001",
 			"kind": "json",
-			"path": "interventions/ir-20260930T034107-6c3a.json",
-			"sha256": "a612b5e3d314d91297df1685ae76967b40124cb7eba2edde39ab5b58cd5cf07b",
+			"path": "interventions/ir-20260930T191932-d21b.json",
+			"sha256": "4e904a15cfd6fbba1cd5ebc16094b39ec81fbfcf31d342572b28594905cbfd90",
 			"redacted": true,
 			"localOnly": false
 		},
 		{
 			"id": "json-0002",
 			"kind": "json",
-			"path": "interventions/ir-20260930T034107-6c3a-v2.json",
-			"sha256": "ec3df7352c0d663d33329eb72328bf159d137ec4cd4b708e7f1e612c2de83337",
+			"path": "interventions/ir-20260930T191932-d21b-v2.json",
+			"sha256": "13d7b3e6ab711a2482418437570ea646e1ce2ab2795de09ada0826bdb9f47f84",
 			"redacted": true,
 			"localOnly": false
 		}
 	],
 	"logPath": "run.jsonl",
-	"redactionRulesVersion": "1.1.0"
+	"redactionRulesVersion": "1.2.0"
 }

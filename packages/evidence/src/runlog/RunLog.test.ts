@@ -109,6 +109,30 @@ describe('RunLog', () => {
 		expect(action).toMatchObject({ durationMs: 48213, target: 'Member number field ([REDACTED])' });
 	});
 
+	it('keeps decision model-response metadata verbatim (5-digit token counts are not member numbers)', async () => {
+		const log = RunLog.create(runDir, redactor());
+		const modelResponse = {
+			responseId: 'msg_01XFDUDYJgAACzvnptvVoYEL',
+			model: 'claude-sonnet-5-5',
+			stopReason: 'tool_use',
+			usage: { inputTokens: 12345, outputTokens: 48213, cacheReadInputTokens: 11000, cacheCreationInputTokens: 0 },
+			latencyMs: 23456,
+		};
+		log.log({
+			kind: 'decision',
+			at: AT,
+			runId: RUN_ID,
+			actor: 'agent',
+			reason: `Search for member ${MEMBER_ID}`,
+			tool: 'fill',
+			input: { value: MEMBER_ID },
+			modelResponse,
+		});
+		await log.close();
+		const [decision] = await RunLog.read(runDir.logPath);
+		expect(decision).toMatchObject({ modelResponse, reason: 'Search for member [REDACTED]' });
+	});
+
 	it('masks a balance in free text (money-amount rule) and keeps numeric fields as numbers', async () => {
 		const log = RunLog.create(runDir, redactor());
 		log.log(observation('Member Inquiry: Checking 842.10, Share Savings $1,523.47'));

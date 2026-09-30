@@ -4,7 +4,7 @@ import type { Redacted } from '@idp/policy';
 import { parseCommandArgs } from '../args/parseCommandArgs.js';
 import type { CommandSpec } from '../args/CommandSpec.js';
 import { readCatalog, type CatalogEntry, type CatalogIo } from '../catalog/readCatalog.js';
-import { userPath, type CliContext } from '../cli/CliContext.js';
+import { displayPath, userPath, type CliContext } from '../cli/CliContext.js';
 import { EXIT } from '../cli/exitCodes.js';
 import { ArtifactFileError } from '../errors/ArtifactFileError.js';
 import type { Printer } from '../output/Printer.js';
@@ -69,7 +69,7 @@ export async function run(args: readonly string[], context: CliContext): Promise
 		const payload = { dir: printer.redact(dir), artifacts: redacted };
 		printer.json(payload as Redacted<typeof payload>);
 	} else {
-		printer.line(`${entries.length} capability artifact(s) in ${dir}`);
+		printer.line(`${entries.length} capability artifact(s) in ${displayPath(context, dir)}`);
 		for (const entry of entries) {
 			printer.line();
 			printEntry(printer, entry);

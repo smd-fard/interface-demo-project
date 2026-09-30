@@ -2,12 +2,9 @@ import type { BrowserContext, Request } from 'playwright';
 
 const ALWAYS_ALLOWED = new Set(['about:', 'data:']);
 
+/** The origin of an allowlist entry, or `null` for an entry that is not a URL (it then matches nothing). */
 function normalizeOrigin(origin: string): string | null {
-	try {
-		return new URL(origin).origin;
-	} catch {
-		return null;
-	}
+	return URL.canParse(origin) ? new URL(origin).origin : null;
 }
 
 /**
@@ -15,12 +12,9 @@ function normalizeOrigin(origin: string): string | null {
  * other scheme (file:, javascript:, ws:, …) and origin is refused.
  */
 export function isRequestAllowed(url: string, allowedOrigins: readonly string[]): boolean {
-	let parsed: URL;
-	try {
-		parsed = new URL(url);
-	} catch {
-		return false;
-	}
+	// A request URL that does not parse is refused.
+	if (!URL.canParse(url)) return false;
+	const parsed = new URL(url);
 	if (ALWAYS_ALLOWED.has(parsed.protocol)) return true;
 	if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false;
 	return allowedOrigins.some((origin) => normalizeOrigin(origin) === parsed.origin);
@@ -28,12 +22,9 @@ export function isRequestAllowed(url: string, allowedOrigins: readonly string[])
 
 /** The part of a refused URL that is safe to log: its origin (http/https) or its scheme. */
 export function blockedOriginOf(url: string): string {
-	try {
-		const parsed = new URL(url);
-		return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : parsed.protocol;
-	} catch {
-		return '(invalid url)';
-	}
+	if (!URL.canParse(url)) return '(invalid url)';
+	const parsed = new URL(url);
+	return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : parsed.protocol;
 }
 
 /** A request the guard aborted: its origin only, and whether it was a document navigation. */

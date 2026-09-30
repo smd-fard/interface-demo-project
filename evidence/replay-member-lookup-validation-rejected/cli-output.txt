@@ -1,0 +1,15 @@
+{
+  "kind": "business_outcome",
+  "runId": "replay-20260930T191825-e76f",
+  "artifact": {
+    "id": "member-lookup",
+    "version": "1.0.0",
+    "contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
+  },
+  "code": "validation_rejected",
+  "message": "Invalid Member Number",
+  "stepId": "s06-click-search"
+}
+business outcome: validation_rejected at s06-click-search (member-lookup@1.0.0): Invalid Member Number
+run dir: .runs/evidence/replay-member-lookup-validation-rejected/runs/replay-20260930T191825-e76f
+exit: 3

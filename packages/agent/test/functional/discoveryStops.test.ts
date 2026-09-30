@@ -131,7 +131,8 @@ describe('agent: every discovery stop condition stops without compiling an artif
 	it('dead_end: no progress on the same screen raises an intervention request and stops', async () => {
 		const run = await discover(script('stuck', [{ ...waitForSignOn, repeat: 10 }]));
 		await expectStopped(run, 'dead_end');
-		expect(run.outcome.turns).toBe(2);
+		// Three consecutive no-progress turns (review-fixes FR8; two no-op waits used to be enough).
+		expect(run.outcome.turns).toBe(3);
 		const requestId = run.outcome.kind === 'stopped' ? run.outcome.interventionRequestId : undefined;
 		expect(requestId).toMatch(/^ir-/);
 		const files = await runFiles(run.runDir);
@@ -148,6 +149,8 @@ describe('agent: every discovery stop condition stops without compiling an artif
 		expect(run.outcome.turns).toBe(3);
 		const denials = run.outcome.trace.steps.filter((step) => step.verdict === 'refused');
 		expect(denials).toHaveLength(3);
+		// Repeated denials escalate like the other stuck triggers (FR6); unattended, the request is raised and persisted.
+		expect(run.outcome.kind === 'stopped' ? run.outcome.interventionRequestId : undefined).toMatch(/^ir-/);
 		// Each denial went back to the model as an error tool result.
 		const last = model.requests.at(-1)?.messages.at(-1);
 		expect(last?.role === 'user' && last.content[0]?.kind === 'tool_result' && last.content[0].isError).toBe(true);

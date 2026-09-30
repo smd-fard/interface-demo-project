@@ -10,10 +10,12 @@ export {
 	type LeaseListener,
 } from './lease/ControlLease.js';
 export { LeasedSurface } from './lease/LeasedSurface.js';
+export { AutomationGateSurface, type AutomationGate } from './lease/AutomationGateSurface.js';
 
 // intervention requests
 export {
 	InterventionService,
+	type AwaitResolutionOptions,
 	type GrantBindingInput,
 	type InterventionResolution,
 	type InterventionServiceOptions,

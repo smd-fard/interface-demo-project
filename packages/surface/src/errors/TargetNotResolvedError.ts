@@ -8,7 +8,7 @@ export interface RungObservation {
 	readonly error?: string;
 }
 
-/** No rung of a target's ladder matched exactly one element (after one re-resolution of the frame). */
+/** No rung of a target's ladder matched exactly one element within the resolve bound (the last pass's counts). */
 export class TargetNotResolvedError extends Error {
 	readonly code = 'TARGET_UNRESOLVED' as const;
 

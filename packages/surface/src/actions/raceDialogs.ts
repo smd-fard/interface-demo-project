@@ -28,8 +28,12 @@ export async function raceDialogs(
 			waiter = monitor.next();
 			continue;
 		}
-		// Abandoned: the work settles once the dialog is handled; its outcome no longer matters.
-		work.catch(() => undefined);
+		// Abandoned: the work settles once the dialog is handled, and its outcome no longer matters — typically a
+		// timeout or a gone frame, since the dialog blocked the page. It is observed here only so the rejection is
+		// not reported as unhandled; the caller acts on the dialog returned instead.
+		work.catch((abandoned: unknown) => {
+			void abandoned;
+		});
 		return winner.dialog;
 	}
 }

@@ -25,12 +25,9 @@ function describeHop(hop: FrameHop): string {
 	}
 }
 
+/** The URL's path; a URL that does not parse (e.g. an empty initial frame URL) is compared as it is. */
 function pathOf(url: string): string {
-	try {
-		return new URL(url).pathname;
-	} catch {
-		return url;
-	}
+	return URL.canParse(url) ? new URL(url).pathname : url;
 }
 
 async function matchesHop<F extends FrameLike<F>>(frame: F, hop: FrameHop): Promise<boolean> {

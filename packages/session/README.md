@@ -60,7 +60,11 @@ await session.close();
   `resume` / `abort` resolve requests. The lease transition runs first, so an illegal one leaves the request
   unchanged. Each status change is persisted as a new version (`<id>-v2.json`, …), and files are never
   overwritten. `approve` mints a single-use `ApprovalGrant`, which is kept in memory only.
-  `awaitResolution(id, { timeoutMs? })`, `list()`, `get(id)` and `refOf(id)` read requests.
+  `awaitResolution(id, { timeoutMs?, claimedTimeoutMs? })` waits: `timeoutMs` bounds the open request, and a
+  claim restarts the wait under `claimedTimeoutMs` (the operator's time at the controls). When a bound passes
+  the request **expires**: it leaves `list()`, and claim / approve / reject answer `InterventionConflictError`
+  (`problem: 'expired'`, 409). The persisted document keeps its last status (the contract has no `expired`
+  status). `list()`, `get(id)`, `isExpired(id)` and `refOf(id)` read requests.
 - Types: `RaiseInterventionInput`, `InterventionResolution`, `InterventionServiceOptions`,
   `InterventionSubject`, `InterventionStep`, `GrantBindingInput`.
 - **`redactInterventionRequest(request, redactor)`** — redacts every free-text field (reason text, goal, step
@@ -97,14 +101,15 @@ await session.close();
 ### Live session
 
 - **`openLiveSession(options) → LiveSession`** — launches the web surface and stacks
-  `LeasedSurface(PolicyGuardedSurface(web))` for the automation. It creates the run directory, run log,
+  `LeasedSurface(PolicyGuardedSurface(AutomationGateSurface(web)))` for the automation. It creates the run directory, run log,
   evidence store and manifest. It logs `policy_verdict`, `lease_change` and `human_action`, and starts the
   human-action recorder while the lease is `HUMAN`. The recorder goes through
   `PolicyGuardedSurface(LeasedSurface(web))`, so a human also acts only while holding the lease. Attended
   sessions also start the `ControlServer`. Options (`OpenLiveSessionOptions`): `policy`, `redactor`,
   `runsRoot`, `runKind`, `runId?`, `origin`, `allowedOrigins?`, `headless?` (default true), `slowMo?`,
-  `attended`, `controlPort?`, `subject`, `automationActor?`, `interventionTimeoutMs?` (default 15 min),
-  `clock?`, `random?`, `launch?`.
+  `attended`, `controlPort?`, `subject`, `automationActor?`, `interventionTimeoutMs?` (the wait for a decision
+  or a claim; default 15 min), `takeoverTimeoutMs?` (a claimed takeover; default 30 min), `clock?`, `random?`,
+  `launch?`.
 - **`LiveSession`** — `surface`, `lease`, `interventions`, `runLog`, `evidence`, `manifest`, `runDir`,
   `grants`, `browser`, `runId`, `controlUrl`, `controlToken`, `recordedHumanActions()`, `close()`.
   - `requestApproval(step: ApprovalStep, opts?) → ApprovalOutcome`. Call it after an
@@ -115,7 +120,9 @@ await session.close();
   - `escalate(reason, currentStep, opts?) → EscalationOutcome`. It raises a takeover request and waits for
     the operator to claim, act and resume. On `resumed`, the lease is `RESUMING` and `humanActions` holds the
     recorded actions. The **caller** re-observes and re-verifies its current checkpoint, then calls
-    `lease.reacquire()` (a mismatch is a hard failure). The other outcomes: `aborted`, `timeout`,
+    `lease.reacquire()` (a mismatch is a hard failure). The wait for the claim is bounded by `timeoutMs`; once
+    claimed, by `takeoverTimeoutMs` (a claim does not end the wait; the operator's resume or abort does). The
+    other outcomes: `aborted`, `timeout` (`stage: 'unclaimed' | 'takeover'`; the request expired),
     `unattended`.
   - **Unattended** (`attended: false`): no control server runs. Both calls raise and persist the request
     and return `{ kind: 'unattended', requestId }` immediately. The lease stays `PAUSED`, and the caller
@@ -130,7 +137,7 @@ await session.close();
 | ----------------------------- | -------------------------- | ---------------------------------------------------------- |
 | `IllegalLeaseTransitionError` | `ILLEGAL_LEASE_TRANSITION` | an operation is not legal from the current state (409)     |
 | `LeaseNotHeldError`           | `LEASE_NOT_HELD`           | an actor acted without holding the lease                   |
-| `InterventionConflictError`   | `INTERVENTION_CONFLICT`    | wrong request kind or status for the operation (409)       |
+| `InterventionConflictError`   | `INTERVENTION_CONFLICT`    | wrong request kind or status, or an expired request (409)  |
 | `InterventionNotFoundError`   | `INTERVENTION_NOT_FOUND`   | unknown request id (404)                                   |
 | `InterventionTimeoutError`    | `INTERVENTION_TIMEOUT`     | nobody resolved the request in time                        |
 | `SessionValidationError`      | `SESSION_VALIDATION`       | malformed operator, reason, id or body (400); names the field, never the value |

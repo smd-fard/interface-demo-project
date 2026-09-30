@@ -29,9 +29,13 @@ const RERUN_KINDS: ReadonlySet<Step['kind']> = new Set(['extract', 'wait']);
  *
  * - resumed (lease RESUMING): re-observe and re-verify the current step's checkpoint on the live screen; if it
  *   holds, reacquire (AGENT) and continue from the next step; if not, fail `checkpoint_failed`. A read-only step
- *   without a checkpoint (extract, wait) is re-run after reacquiring; any other step without one continues, and
- *   the next checkpoint verifies the screen. A condition seen while re-verifying is returned for the catalog.
- * - aborted → `human_aborted`; nobody claimed it in time → `timeout`.
+ *   without a checkpoint (extract, wait) is re-run after reacquiring. Any other step without a checkpoint has
+ *   nothing to re-verify, so the resume is accepted only when the operator performed at least one action during
+ *   the takeover (recorded, policy-allowed): then the step counts as done by the human and the next checkpoint
+ *   verifies the screen; otherwise it fails `checkpoint_failed` (resumed without performing the step) instead of
+ *   silently skipping it. A condition seen while re-verifying is returned for the catalog.
+ * - aborted → `human_aborted`; nobody claimed it within `approvalTimeoutMs`, or the claimed takeover lasted
+ *   longer than `takeoverTimeoutMs` → `timeout` (the request expired).
  * - unattended: the request is persisted and the original failure is returned with its ref.
  *
  * Every failure carries the `interventionRequestId`. Bounded: one takeover per step (the caller never re-enters).
@@ -46,7 +50,8 @@ export async function handleHardFailure(input: HandleHardFailureInput): Promise<
 			description: step.description.slice(0, MAX_DESCRIPTION),
 			risk: step.risk,
 		},
-		{ timeoutMs: context.options.approvalTimeoutMs },
+		// The claim is awaited like an approval; once claimed, the operator has the (longer) takeover bound.
+		{ timeoutMs: context.options.approvalTimeoutMs, takeoverTimeoutMs: context.options.takeoverTimeoutMs },
 	);
 	const { requestId } = outcome;
 	const fail = (code: ReplayError['code'], observed: string) =>
@@ -61,7 +66,12 @@ export async function handleHardFailure(input: HandleHardFailureInput): Promise<
 		case 'unattended':
 			throw error.withIntervention(requestId);
 		case 'timeout':
-			throw fail('timeout', `no operator took over within ${context.options.approvalTimeoutMs} ms`);
+			throw fail(
+				'timeout',
+				outcome.stage === 'takeover'
+					? `the operator did not hand control back within ${context.options.takeoverTimeoutMs} ms`
+					: `no operator took over within ${context.options.approvalTimeoutMs} ms`,
+			);
 		case 'aborted':
 			throw fail('human_aborted', 'the operator aborted the run');
 		case 'resumed':
@@ -73,8 +83,21 @@ export async function handleHardFailure(input: HandleHardFailureInput): Promise<
 			await session.lease.reacquire();
 			return verified;
 		}
+		if (RERUN_KINDS.has(step.kind)) {
+			await session.lease.reacquire();
+			return await input.rerun();
+		}
+		if (!outcome.humanActions.some((action) => !action.refused)) {
+			throw new ReplayError('checkpoint_failed', {
+				step: position,
+				expected: `the operator to perform ${step.id} (it has no checkpoint to re-verify on resume)`,
+				observed: 'the operator resumed without performing any action',
+				interventionRequestId: requestId,
+				cause: error,
+			});
+		}
 		await session.lease.reacquire();
-		return RERUN_KINDS.has(step.kind) ? await input.rerun() : { kind: 'completed' };
+		return { kind: 'completed' };
 	} catch (resumeError) {
 		if (resumeError instanceof ReplayError) throw resumeError.withIntervention(requestId);
 		throw resumeError;

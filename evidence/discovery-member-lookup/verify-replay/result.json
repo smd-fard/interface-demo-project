@@ -1,15 +1,15 @@
 {
 	"kind": "success",
-	"runId": "replay-20260930T033858-a16a",
+	"runId": "replay-20260930T191804-af3b",
 	"artifact": {
 		"id": "member-lookup",
 		"version": "1.0.0",
-		"contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+		"contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
 	},
 	"outputs": {
 		"savingsBalance": "[REDACTED]"
 	},
-	"durationMs": 1375,
+	"durationMs": 1465,
 	"drift": [],
 	"recoveries": 0
 }

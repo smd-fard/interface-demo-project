@@ -1,4 +1,4 @@
-import type { Step } from '@idp/artifact-schema';
+import { maxRisk, type RiskClass, type Step } from '@idp/artifact-schema';
 import type { ActOutcome, SurfaceAction } from '@idp/surface';
 import type { StepContext, StepPosition } from './StepContext.js';
 
@@ -16,6 +16,29 @@ export interface Landing {
 export interface Performed {
 	readonly outcome: ActOutcome;
 	readonly landing: Landing;
+}
+
+/**
+ * Records the step's effective risk — the guard's classification when it reports one, never below the declared
+ * risk nor below an earlier attempt's — and returns it (the risk the `action` entry logs).
+ */
+function recordEffectiveRisk(
+	step: Step,
+	position: StepPosition,
+	classified: RiskClass | undefined,
+	context: StepContext,
+): RiskClass {
+	const known = context.state.effectiveRisk.get(position.id);
+	let risk = maxRisk(step.risk, classified ?? step.risk);
+	if (known !== undefined) risk = maxRisk(risk, known);
+	context.state.effectiveRisk.set(position.id, risk);
+	return risk;
+}
+
+/** The step's effective risk: its declared risk, raised to what policy classified when it acted (`RunState`). */
+export function effectiveRisk(step: Step, context: StepContext): RiskClass {
+	const classified = context.state.effectiveRisk.get(step.id);
+	return classified === undefined ? step.risk : maxRisk(step.risk, classified);
 }
 
 /** Kinds whose action can start a document load the surface waits for. */
@@ -40,7 +63,7 @@ export function actionBase(step: Step, context: StepContext) {
 /**
  * Performs one step's action through the session's leased, policy-guarded surface — so the policy check runs
  * inside the guard **before** the surface acts, and the landing is checked after (invariant 2) — then logs
- * `locator_resolved` (the rung; a rung above 0 is recorded as drift, FR11) and `action` (kind, risk, target
+ * `locator_resolved` (the rung; a rung above 0 is recorded as drift, FR11) and `action` (kind, effective risk, target
  * description and duration: never the typed or extracted value). Errors propagate to the step runner. A loading
  * kind (navigate, click, press) that took its whole bound reports `loadPending` (the surface waits for the load
  * it started at most that long, so the page may still be loading).
@@ -55,6 +78,7 @@ export async function performAction(
 	const outcome = await context.surface.act(action);
 	const durationMs = Math.max(0, context.clock.now().getTime() - started);
 	const at = () => context.clock.now().toISOString();
+	const risk = recordEffectiveRisk(step, position, outcome.risk, context);
 	const resolution = outcome.resolution;
 	if (resolution !== undefined) {
 		context.runLog.log({
@@ -76,7 +100,7 @@ export async function performAction(
 		runId: context.runId,
 		actor: 'replay',
 		actionKind: step.kind,
-		risk: step.risk,
+		risk,
 		stepId: position.id,
 		...('target' in step && step.target !== undefined ? { target: step.target.description } : {}),
 		durationMs,

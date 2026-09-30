@@ -1,6 +1,6 @@
 {
 	"kind": "success",
-	"runId": "replay-20260930T034105-5c39",
+	"runId": "replay-20260930T191929-b480",
 	"artifact": {
 		"id": "open-sub-account",
 		"version": "1.0.1",
@@ -9,7 +9,7 @@
 	"outputs": {
 		"confirmationNumber": "SA-000001"
 	},
-	"durationMs": 16348,
+	"durationMs": 3406,
 	"drift": [],
 	"recoveries": 0
 }

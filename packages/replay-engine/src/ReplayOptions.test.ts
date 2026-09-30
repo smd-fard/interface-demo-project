@@ -13,6 +13,7 @@ describe('resolveReplayOptions', () => {
 			maxDialogDismissPerStep: 1,
 			maxReauthPerRun: 1,
 			approvalTimeoutMs: 300_000,
+			takeoverTimeoutMs: 1_800_000,
 		});
 		expect(resolveReplayOptions()).toEqual(DEFAULT_REPLAY_OPTIONS);
 	});
@@ -30,5 +31,6 @@ describe('resolveReplayOptions', () => {
 		expect(() => resolveReplayOptions({ retry: { max: 50 } })).toThrow(ReplayOptionsError);
 		expect(() => resolveReplayOptions({ checkpointTimeoutMs: 1.5 })).toThrow(ReplayOptionsError);
 		expect(() => resolveReplayOptions({ maxReauthPerRun: -1 })).toThrow(/maxReauthPerRun/);
+		expect(() => resolveReplayOptions({ takeoverTimeoutMs: 0 })).toThrow(/takeoverTimeoutMs/);
 	});
 });

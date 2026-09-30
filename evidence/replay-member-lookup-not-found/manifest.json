@@ -1,15 +1,15 @@
 {
-	"runId": "replay-20260930T033949-ac36",
+	"runId": "replay-20260930T191823-2de1",
 	"kind": "replay",
-	"startedAt": "2026-09-30T03:39:49.546Z",
-	"endedAt": "2026-09-30T03:39:51.005Z",
+	"startedAt": "2026-09-30T19:18:23.048Z",
+	"endedAt": "2026-09-30T19:18:24.664Z",
 	"artifact": {
 		"id": "member-lookup",
 		"version": "1.0.0",
-		"contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+		"contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
 	},
 	"resultKind": "business_outcome",
 	"evidence": [],
 	"logPath": "run.jsonl",
-	"redactionRulesVersion": "1.1.0"
+	"redactionRulesVersion": "1.2.0"
 }

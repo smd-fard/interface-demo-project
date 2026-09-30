@@ -1,0 +1,47 @@
+{
+	"id": "ir-20260930T191928-4403",
+	"runId": "replay-20260930T191926-49aa",
+	"runKind": "replay",
+	"kind": "takeover",
+	"reason": {
+		"code": "app_error",
+		"text": "Expected s04-click-sign-on to complete with no app_error condition; observed app_error (artifact): matched \"Server Error\""
+	},
+	"subject": {
+		"kind": "capability",
+		"id": "member-lookup",
+		"version": "1.0.0"
+	},
+	"currentStep": {
+		"index": 3,
+		"id": "s04-click-sign-on",
+		"description": "Click button \"Sign On\".",
+		"risk": "reversible"
+	},
+	"state": {
+		"url": "http://127.0.0.1:4211/",
+		"title": "CoreOne 7.4",
+		"screenshotRef": {
+			"id": "screenshot-0001",
+			"kind": "screenshot",
+			"path": "screenshots/0001-intervention.png",
+			"sha256": "878d032bb4407d2ebd7fbe127045d252e517f7d4c743f9cd52cb42c580068b73",
+			"redacted": true,
+			"localOnly": false
+		},
+		"a11ySnapshotRef": {
+			"id": "a11y-snapshot-0001",
+			"kind": "a11y_snapshot",
+			"path": "snapshots/0001.json",
+			"sha256": "47ecbfb07234818abcb20b43b514c9dc87c7136ab77b5ae8d0f334d1ffdffcf6",
+			"redacted": true,
+			"localOnly": false
+		}
+	},
+	"options": [
+		"resumed",
+		"aborted"
+	],
+	"status": "open",
+	"createdAt": "2026-09-30T19:19:28.094Z"
+}

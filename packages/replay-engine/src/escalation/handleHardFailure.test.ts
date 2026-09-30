@@ -63,7 +63,7 @@ describe('handleHardFailure (step 34)', () => {
 				redactor: fixture.redactor,
 			}),
 			verifier: new CheckpointVerifier({ surface: fixture.session.surface }),
-			options: resolveReplayOptions({ approvalTimeoutMs: 5000 }),
+			options: resolveReplayOptions({ approvalTimeoutMs: 5000, takeoverTimeoutMs: 60_000 }),
 			clock: fixture.clock,
 			outputs: new Map(),
 			state: new RunState(),
@@ -99,7 +99,7 @@ describe('handleHardFailure (step 34)', () => {
 		return error as ReplayError;
 	}
 
-	it('raises a takeover with the failure code, the step and its risk, bounded by the intervention timeout', async () => {
+	it('raises a takeover with the failure code, the step and its risk; claim and takeover bounded separately', async () => {
 		const { run, escalate } = await setup({ kind: 'resumed', requestId: REQUEST, humanActions: [] });
 		await run();
 		expect(escalate).toHaveBeenCalledWith(
@@ -108,7 +108,7 @@ describe('handleHardFailure (step 34)', () => {
 				text: 'Expected text "Member Inquiry" present in frame content; observed text "Member Inquiry" not present',
 			},
 			{ index: 5, id: 's06-click-search', description: 'Run the search.', risk: 'read' },
-			{ timeoutMs: 5000 },
+			{ timeoutMs: 5000, takeoverTimeoutMs: 60_000 },
 		);
 	});
 
@@ -160,5 +160,65 @@ describe('handleHardFailure (step 34)', () => {
 		const { run, rerun } = await setup(outcome);
 		expect(await failureOf(run())).toMatchObject({ code, interventionRequestId: REQUEST });
 		expect(rerun).not.toHaveBeenCalled();
+	});
+
+	it('a claimed takeover that outlasted takeoverTimeoutMs → timeout naming the takeover bound', async () => {
+		const { run } = await setup({ kind: 'timeout', requestId: REQUEST, stage: 'takeover' });
+		const error = await failureOf(run());
+		expect(error).toMatchObject({ code: 'timeout', interventionRequestId: REQUEST });
+		expect(error.observed).toContain('60000 ms');
+	});
+
+	it('unclaimed → timeout naming the claim bound', async () => {
+		const { run } = await setup({ kind: 'timeout', requestId: REQUEST, stage: 'unclaimed' });
+		expect((await failureOf(run())).observed).toContain('no operator took over within 5000 ms');
+	});
+
+	describe('resumed on a step without a checkpoint that is not read-only', () => {
+		const fill: Step = {
+			id: 's05-fill-member-id',
+			kind: 'fill',
+			description: 'Fill the member number.',
+			phase: 'main',
+			risk: 'reversible',
+			target: search.target,
+			value: { kind: 'param', name: 'memberId' },
+			sensitive: true,
+		};
+		const humanAction = (refused: boolean) =>
+			({
+				seq: 1,
+				kind: 'fill',
+				fingerprint: null,
+				sensitive: true,
+				verdict: refused ? 'deny' : 'allow',
+				refused,
+				at: '2026-09-30T10:00:00.000Z',
+				operator: 'operator:ops-1',
+			}) as const;
+
+		it('the operator performed an action: reacquire and count the step done', async () => {
+			const { run, calls, rerun } = await setup({
+				kind: 'resumed',
+				requestId: REQUEST,
+				humanActions: [humanAction(false)],
+			});
+			expect(await run(fill)).toEqual({ kind: 'completed' });
+			expect(calls).toEqual(['escalate', 'reacquire']);
+			expect(rerun).not.toHaveBeenCalled();
+		});
+
+		it.each([
+			['no action', []],
+			['only refused actions', [humanAction(true)]],
+		] as const)('%s: checkpoint_failed with the ref, lease not reacquired', async (_what, humanActions) => {
+			const { run, calls } = await setup({ kind: 'resumed', requestId: REQUEST, humanActions: [...humanActions] });
+			expect(await failureOf(run(fill))).toMatchObject({
+				code: 'checkpoint_failed',
+				interventionRequestId: REQUEST,
+				observed: 'the operator resumed without performing any action',
+			});
+			expect(calls).toEqual(['escalate']);
+		});
 	});
 });

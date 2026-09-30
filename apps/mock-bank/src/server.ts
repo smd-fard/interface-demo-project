@@ -80,7 +80,8 @@ function dispatch(route: Route, ctx: RequestContext, session: Session | undefine
 /**
  * The request-level faults, in order: session_timeout, slow_load, failed_load(_persistent), app_error,
  * permission_denied. Screen-level faults (member_not_found, validation_error, known_dialog, unknown_dialog,
- * control_missing) are taken by the screen handlers. Returns true when a fault produced the response.
+ * control_missing, late_render, wrong_screen) are taken by the screen handlers. Returns true when a fault
+ * produced the response.
  */
 async function applyFaults(
 	app: AppContext,

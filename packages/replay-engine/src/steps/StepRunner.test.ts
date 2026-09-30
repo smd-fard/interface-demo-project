@@ -1,6 +1,12 @@
 import type { OutcomeRule, Step, TargetRef } from '@idp/artifact-schema';
 import { FULL_MASK } from '@idp/policy';
-import { ApprovalRequiredError, PolicyDeniedError, TargetNotResolvedError, WaitTimeoutError } from '@idp/surface';
+import {
+	ApprovalRequiredError,
+	PolicyDeniedError,
+	TargetNotResolvedError,
+	WaitTimeoutError,
+	type Surface,
+} from '@idp/surface';
 import { fakeObservation, type FakeSurfaceOptions } from '@idp/surface/testing';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CheckpointVerifier } from '../checkpoints/CheckpointVerifier.js';
@@ -295,5 +301,125 @@ describe('StepRunner and the eight step handlers (define-action touch point 4)',
 			stepId: 's05-click',
 		});
 		expect(JSON.stringify(entries)).not.toContain('12345');
+	});
+
+	describe('failed-load retry (recovery guard)', () => {
+		const failedLoad: OutcomeRule = {
+			code: 'failed_load',
+			class: 'recoverable',
+			description: 'The page failed to load; retry.',
+			signature: { kind: 'text_present', text: 'Service Unavailable' },
+			scope: 'any_step',
+			recovery: { kind: 'retry', max: 2, backoffMs: 0 },
+		};
+		const unavailable = fakeObservation(`${ORIGIN}/`, {
+			frames: [
+				{
+					path: ['content'],
+					name: 'content',
+					url: `${ORIGIN}/member/detail`,
+					title: 'Service Unavailable',
+					status: 503,
+					text: 'Service Unavailable HTTP Error 503',
+					textTruncated: false,
+				},
+			],
+		});
+		const entry: Step = { ...base('s01-open'), kind: 'navigate', route: '/', checkpoint: textIn('Member Search') };
+		const save: Step = {
+			...base('s02-save', 'reversible'),
+			kind: 'click',
+			target: target('Save'),
+			checkpoint: textIn('Saved'),
+		};
+		const search: Step = {
+			...base('s03-search'),
+			kind: 'click',
+			target: target('Search'),
+			checkpoint: textIn('Member Inquiry'),
+		};
+
+		/**
+		 * A runner whose page shows "Service Unavailable" after the first act of `failAt` until the next navigate;
+		 * `raised` step ids come back from the (simulated) guard classified irreversible; `savedBefore` makes the
+		 * Saved checkpoint hold before s02 acted.
+		 */
+		async function retrying(options: { failAt: string; raised?: string[]; savedBefore?: boolean }) {
+			let failing = false;
+			let failed = false;
+			let saved = options.savedBefore ?? false;
+			const made = await runner(
+				{
+					onAct: (action) => {
+						if (action.kind === 'navigate') failing = false;
+						if (action.stepId === 's02-save') saved = true;
+						if (action.stepId === options.failAt && !failed) {
+							failed = true;
+							failing = true;
+						}
+						return {
+							kind: action.kind,
+							url: `${ORIGIN}/`,
+							navigation: null,
+							...(options.raised?.includes(action.stepId ?? '') ? { risk: 'irreversible' as const } : {}),
+						};
+					},
+				},
+				{ conditions: { artifactRules: [failedLoad], profileRules: [] } },
+			);
+			fixture.surface.observe = async () => (failing ? unavailable : fakeObservation(`${ORIGIN}/`));
+			const check: Surface['check'] = async (checkpoint) =>
+				checkpoint.kind === 'text_present' && checkpoint.text === 'Saved' && !saved
+					? { kind: 'not_held', observed: 'text "Saved" not present' }
+					: { kind: 'held' };
+			Object.assign(fixture.surface, { check });
+			return made;
+		}
+
+		/** The step's own clicks (a reload's navigate carries the failed step's id too). */
+		const actsOf = (stepId: string) =>
+			fixture.surface.acts.filter((action) => action.stepId === stepId && action.kind === 'click').length;
+
+		it('a step declared reversible that policy classified irreversible is never retried across', async () => {
+			const { run, state } = await retrying({ failAt: 's03-search', raised: ['s02-save'] });
+			const error = await failureOf(run.run([entry, save, search]));
+			expect(error).toMatchObject({ code: 'recovery_exhausted', step: { index: 2, id: 's03-search' } });
+			expect(error.observed).toBe('retrying would re-run the irreversible s02-save: refused');
+			expect(state.effectiveRisk.get('s02-save')).toBe('irreversible');
+			expect(actsOf('s02-save')).toBe(1);
+			const entries = await fixture.runLog.entries();
+			expect(entries.find((logged) => logged.kind === 'action' && logged.stepId === 's02-save')).toMatchObject({
+				risk: 'irreversible',
+			});
+		});
+
+		it('the failed step itself, raised to irreversible by policy, is never retried', async () => {
+			const { run } = await retrying({ failAt: 's02-save', raised: ['s02-save'] });
+			const error = await failureOf(run.run([entry, save, search]));
+			expect(error).toMatchObject({ code: 'recovery_exhausted', step: { index: 1, id: 's02-save' } });
+			expect(error.observed).toBe('failed_load after an irreversible step: it is never retried');
+		});
+
+		it('without the raise, the same run retries across s02 (control)', async () => {
+			const { run } = await retrying({ failAt: 's03-search' });
+			expect(await run.run([entry, save, search])).toEqual({ kind: 'completed' });
+			// The retry ran: the entry route was reloaded for s03 (a read-only step whose checkpoint then held).
+			expect(
+				fixture.surface.acts.filter((action) => action.kind === 'navigate').map((action) => action.stepId),
+			).toEqual(['s01-open', 's03-search']);
+		});
+
+		it('a checkpoint that already held before the step does not count the step as done after the reload', async () => {
+			const { run } = await retrying({ failAt: 's02-save', savedBefore: true });
+			expect(await run.run([entry, save, search])).toEqual({ kind: 'completed' });
+			// Re-executed: the reload's "Saved" proves nothing, it held before s02 ever acted.
+			expect(actsOf('s02-save')).toBe(2);
+		});
+
+		it('a checkpoint that did not hold before the step and holds after the reload counts the step as done', async () => {
+			const { run } = await retrying({ failAt: 's02-save' });
+			expect(await run.run([entry, save, search])).toEqual({ kind: 'completed' });
+			expect(actsOf('s02-save')).toBe(1);
+		});
 	});
 });

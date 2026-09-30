@@ -52,6 +52,7 @@ import {
 	type InterventionSubject,
 } from './intervention/InterventionService.js';
 import { ControlLease, type AutomationActor } from './lease/ControlLease.js';
+import { AutomationGateSurface } from './lease/AutomationGateSurface.js';
 import { LeasedSurface } from './lease/LeasedSurface.js';
 
 /** Configures `openLiveSession`: policy, redactor, run directory, target origin, browser and attended mode. */
@@ -79,8 +80,13 @@ export interface OpenLiveSessionOptions {
 	readonly subject: InterventionSubject;
 	/** Default: `agent` for discovery, `replay` for replay. Must match the run kind. */
 	readonly automationActor?: AutomationActor;
-	/** How long `requestApproval` / `escalate` wait for an operator by default (default 15 minutes). */
+	/**
+	 * How long `requestApproval` waits for a decision, and `escalate` for a claim, by default (default 15 minutes).
+	 * The request expires when it passes.
+	 */
 	readonly interventionTimeoutMs?: number;
+	/** How long a claimed takeover may last (the operator at the controls) by default (default 30 minutes). */
+	readonly takeoverTimeoutMs?: number;
 	readonly clock?: Clock;
 	readonly random?: Random;
 	/** Launches the browser surface (default `launchWebSurface`); a seam for tests. */
@@ -106,8 +112,10 @@ export interface ApprovalStep {
 
 /** Per-call overrides for `requestApproval` / `escalate`. */
 export interface InterventionCallOptions {
-	/** Overrides the session's `interventionTimeoutMs`. */
+	/** Overrides the session's `interventionTimeoutMs` (the wait for a decision, or for a takeover's claim). */
 	readonly timeoutMs?: number;
+	/** `escalate` only: overrides the session's `takeoverTimeoutMs` (the wait once the takeover is claimed). */
+	readonly takeoverTimeoutMs?: number;
 	/** Overrides the session's subject. */
 	readonly subject?: InterventionSubject;
 }
@@ -120,7 +128,7 @@ export type ApprovalOutcome =
 	| { readonly kind: 'rejected'; readonly requestId: InterventionId }
 	/** The operator aborted the run: the lease is `CLOSED`. */
 	| { readonly kind: 'aborted'; readonly requestId: InterventionId }
-	/** Nobody answered in time: the lease stays `PAUSED`, the request open. */
+	/** Nobody answered in time: the lease stays `PAUSED`; the request expired (it can no longer be approved). */
 	| { readonly kind: 'timeout'; readonly requestId: InterventionId }
 	/** Unattended: the request is raised and persisted; the lease is `PAUSED`. */
 	| { readonly kind: 'unattended'; readonly requestId: InterventionId };
@@ -139,10 +147,15 @@ export type EscalationOutcome =
 			readonly requestId: InterventionId;
 			readonly humanActions: readonly SessionHumanAction[];
 	  }
-	| { readonly kind: 'timeout'; readonly requestId: InterventionId }
+	/**
+	 * The request expired: nobody claimed it within `timeoutMs` (`stage: 'unclaimed'`, lease `PAUSED`), or the
+	 * claimed takeover outlasted `takeoverTimeoutMs` (`stage: 'takeover'`, lease still `HUMAN`). Fail the run.
+	 */
+	| { readonly kind: 'timeout'; readonly requestId: InterventionId; readonly stage?: 'unclaimed' | 'takeover' }
 	| { readonly kind: 'unattended'; readonly requestId: InterventionId };
 
 const DEFAULT_TIMEOUT_MS = 15 * 60_000;
+const DEFAULT_TAKEOVER_TIMEOUT_MS = 30 * 60_000;
 
 /** One line about a recorded action for the run log: kind, role, name, frame — never the typed value. */
 function describeHumanAction(action: RecordedHumanAction): string {
@@ -165,6 +178,12 @@ function describeHumanAction(action: RecordedHumanAction): string {
  * recorder mediates the operator's gestures through a second guard whose inner surface is lease-checked for
  * `human` (so a human, too, acts only while holding the lease); each recorded action is logged
  * (`human_action`, actor `operator:<handle>`, no values). Attended sessions run the localhost control API.
+ *
+ * Attended sessions also lock the browser window whenever the lease is not `HUMAN` (`AGENT`, `PAUSED`,
+ * `RESUMING`): the recorder's capture script stays installed in `block` mode, so a person at a headed window
+ * cannot click, type, select or submit anything (e.g. click an irreversible Confirm while its approval is
+ * pending); a banner says automation is in control. The automation's own input gets through the lock only
+ * inside one policy-allowed act at a time (`AutomationGateSurface`, innermost under the guard).
  *
  * Protocol for replay and agent:
  * - `ApprovalRequiredError` on an irreversible action → `requestApproval(step)`. On `granted` the lease is
@@ -201,6 +220,7 @@ export class LiveSession {
 			readonly attended: boolean;
 			readonly subject: InterventionSubject;
 			readonly timeoutMs: number;
+			readonly takeoverTimeoutMs: number;
 			readonly redactor: Redactor;
 			readonly clock: Clock;
 		},
@@ -277,8 +297,14 @@ export class LiveSession {
 		const requestId = request.id;
 		if (!this.settings.attended) return { kind: 'unattended', requestId };
 		const before = this.humanActions.length;
-		const resolution = await this.wait(requestId, options);
-		if (resolution === 'timeout') return { kind: 'timeout', requestId };
+		const resolution = await this.wait(requestId, {
+			...options,
+			takeoverTimeoutMs: options.takeoverTimeoutMs ?? this.settings.takeoverTimeoutMs,
+		});
+		if (resolution === 'timeout') {
+			const stage = this.interventions.get(requestId)?.status === 'claimed' ? 'takeover' : 'unclaimed';
+			return { kind: 'timeout', requestId, stage };
+		}
 		await this.recorderIdle();
 		const humanActions = this.humanActions.slice(before);
 		return { kind: resolution.decision === 'resumed' ? 'resumed' : 'aborted', requestId, humanActions };
@@ -430,6 +456,7 @@ export class LiveSession {
 		try {
 			return await this.interventions.awaitResolution(requestId, {
 				timeoutMs: options.timeoutMs ?? this.settings.timeoutMs,
+				...(options.takeoverTimeoutMs === undefined ? {} : { claimedTimeoutMs: options.takeoverTimeoutMs }),
 			});
 		} catch (error) {
 			if (error instanceof InterventionTimeoutError) return 'timeout';
@@ -506,7 +533,13 @@ export async function openLiveSession(options: OpenLiveSessionOptions): Promise<
 	const guard = (inner: Surface) =>
 		new PolicyGuardedSurface({ inner, policy: options.policy, origin: options.origin, grants, onVerdict });
 	// Automation: lease → guard → browser. Human (recorder): guard → lease → browser.
-	const surface = new LeasedSurface(guard(web.surface), lease);
+	// Attended: the page is locked whenever the lease is not HUMAN (FR1); the gate, innermost on the automation's
+	// side, lets its input through for one policy-allowed act at a time.
+	const recorder = new HumanActionRecorder(web.handle, {
+		clock,
+		dialogPending: () => web.surface.pendingDialog() !== null,
+	});
+	const surface = new LeasedSurface(guard(new AutomationGateSurface(web.surface, recorder)), lease);
 	const humanGuard = guard(new LeasedSurface(web.surface, lease));
 	const interventions = new InterventionService({
 		runId,
@@ -530,12 +563,13 @@ export async function openLiveSession(options: OpenLiveSessionOptions): Promise<
 		runDir,
 		grants,
 		web.handle,
-		new HumanActionRecorder(web.handle, { clock }),
+		recorder,
 		humanGuard,
 		{
 			attended: options.attended,
 			subject: options.subject,
 			timeoutMs: options.interventionTimeoutMs ?? DEFAULT_TIMEOUT_MS,
+			takeoverTimeoutMs: options.takeoverTimeoutMs ?? DEFAULT_TAKEOVER_TIMEOUT_MS,
 			redactor: options.redactor,
 			clock,
 		},
@@ -544,6 +578,8 @@ export async function openLiveSession(options: OpenLiveSessionOptions): Promise<
 	let controlServer: ControlServer | null = null;
 	if (options.attended) {
 		try {
+			// Lock the headed window first: a person at it cannot act unmediated while the automation holds the lease.
+			await recorder.lock();
 			// The bearer token always comes from system randomness, never from the injected (test) source.
 			controlServer = await ControlServer.start({ target: session.controlTarget(), port: options.controlPort ?? 0 });
 		} catch (error) {

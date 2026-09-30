@@ -175,8 +175,10 @@ describe('createRedactor', () => {
 	});
 
 	it('masks the longest known value first', () => {
-		const r = createRedactor({ config, sensitiveValues: ['AB', 'ABCD'] });
-		expect(r.redactString('xABCDx')).toBe(`x${FULL}x`);
+		const r = createRedactor({ config, sensitiveValues: ['AB', 'ABCD', 'X1', 'X1Y2'] });
+		// Alphabetic values match at word boundaries since rules 1.2.0, so the text separates them.
+		expect(r.redactString('x ABCD x')).toBe(`x ${FULL} x`);
+		expect(r.redactString('zX1Y2z')).toBe(`z${FULL}z`);
 	});
 
 	describe('digit boundaries on known values', () => {
@@ -210,9 +212,11 @@ describe('createRedactor', () => {
 			expect(r.redactString('Balance: 11523.470')).toBe('Balance: 11523.470');
 		});
 
-		it('keeps letter edges matching inside longer text', () => {
+		// Expectation changed with rules 1.2.0: a name-like value (`Smith`) no longer matches inside a word
+		// (it used to turn `Smithson` into `[REDACTED]son`); a mixed value (`AB12`) keeps substring matching.
+		it('keeps letter edges of a mixed value matching inside longer text, but not a name-like value', () => {
 			const r = createRedactor({ config, sensitiveValues: ['AB12', 'Smith'] });
-			expect(r.redactString('xAB12y Smithson')).toBe(`x${FULL}y ${FULL}son`);
+			expect(r.redactString('xAB12y Smithson Smith')).toBe(`x${FULL}y Smithson ${FULL}`);
 		});
 
 		it('escapes regex metacharacters in known values with digit edges', () => {
@@ -252,5 +256,89 @@ describe('createRedactor', () => {
 			'member-number',
 			'money-amount',
 		]);
+	});
+
+	describe('alphabetic known values (rules 1.2.0)', () => {
+		it('matches case-insensitively', () => {
+			const r = createRedactor({ config, sensitiveValues: [{ value: 'Ann', paramName: 'firstName' }] });
+			expect(r.redactString('ANN / ann / Ann')).toBe(`${FULL} / ${FULL} / ${FULL}`);
+			expect(r.placeholderize('Hello ANN.')).toBe('Hello {{firstName}}.');
+		});
+
+		it('matches only at word boundaries, so a short name never splits a longer word', () => {
+			const r = createRedactor({ config, sensitiveValues: ['Ann'] });
+			expect(r.redactString('Annual fee for Joanne, Ann2')).toBe('Annual fee for Joanne, Ann2');
+			expect(r.redactString('(Ann)')).toBe(`(${FULL})`);
+		});
+
+		it('matches a multi-word name across case', () => {
+			const r = createRedactor({ config, sensitiveValues: ['Mary Example'] });
+			expect(r.redactString('Owner: MARY EXAMPLE')).toBe(`Owner: ${FULL}`);
+		});
+
+		it('keeps case-sensitive substring matching for a non-alphabetic value (e.g. a password)', () => {
+			const r = createRedactor({ config, sensitiveValues: ['hunter2-synthetic'] });
+			expect(r.redactString('xhunter2-syntheticx')).toBe(`x${FULL}x`);
+			expect(r.redactString('HUNTER2-SYNTHETIC')).toBe('HUNTER2-SYNTHETIC');
+		});
+	});
+
+	describe('hex digests and URL authorities (rules 1.2.0)', () => {
+		const digest = 'sha256:5899f68e40f1234567890abcdef12345abcdef0123456789abcdef0123456745';
+		const bareHex = '0123456789abcdef0123456789abcdef';
+
+		it('leaves a sha256 digest intact under the default patterns', () => {
+			const r = createRedactor({ sensitiveValues: [] });
+			expect(r.redactString(`screen ${digest} changed`)).toBe(`screen ${digest} changed`);
+			expect(r.redact({ before: digest })).toEqual({ before: digest });
+			expect(r.placeholderize(digest)).toBe(digest);
+		});
+
+		it('leaves a truncated run-log digest intact (was sha256:5899f68e40f[•••45])', () => {
+			const r = createRedactor({ sensitiveValues: [] });
+			expect(r.redactString('sha256:5899f68e40f12345')).toBe('sha256:5899f68e40f12345');
+			expect(r.redact({ kind: 'observation', digest: 'sha256:0000012345abcdef' })).toEqual({
+				kind: 'observation',
+				digest: 'sha256:0000012345abcdef',
+			});
+		});
+
+		it('leaves a standalone run of 32+ hex characters intact, but a short hex run is not exempt', () => {
+			const r = createRedactor({ sensitiveValues: [] });
+			expect(r.redactString(`id ${bareHex}`)).toBe(`id ${bareHex}`);
+			expect(r.redactString('id abc12345')).toBe('id abc[•••45]');
+			expect(r.redactString('member 48213')).toBe('member [•••13]');
+		});
+
+		it('still masks a known sensitive value inside a digest', () => {
+			const r = createRedactor({ sensitiveValues: ['5899f68e40f'] });
+			expect(r.redactString(digest)).not.toContain('5899f68e40f');
+		});
+
+		it('leaves the port of a URL authority intact, but still masks a member number in its path or query', () => {
+			const r = createRedactor({ sensitiveValues: [] });
+			expect(r.redactString('control API at http://127.0.0.1:61012')).toBe('control API at http://127.0.0.1:61012');
+			expect(r.redactString('http://localhost:43210/member?m=48213')).toBe('http://localhost:43210/member?m=[•••13]');
+			expect(r.redactString('port 61012')).toBe('port [•••12]');
+			// A known value is masked even inside an authority.
+			expect(createRedactor({ sensitiveValues: ['61012'] }).redactString('http://127.0.0.1:61012')).toBe(
+				`http://127.0.0.1:${FULL}`,
+			);
+		});
+
+		it('does not exempt an all-digit run, a digit-only host or userinfo', () => {
+			const digits = '12345678901234567890123456789012345';
+			const termed = createRedactor({ config: { redaction: { patterns: [], terms: [digits] } }, sensitiveValues: [] });
+			expect(termed.redactString(`ref ${digits}`)).not.toContain(digits);
+			const r = createRedactor({ sensitiveValues: [] });
+			expect(r.redactString('http://48213/')).toBe('http://[•••13]/');
+			expect(r.redactString('http://u:48213@bank.example/')).not.toContain('48213');
+		});
+
+		it('exempts digests from terms too', () => {
+			const r = createRedactor({ config: { redaction: { patterns: [], terms: ['abcdef'] } }, sensitiveValues: [] });
+			expect(r.redactString(digest)).toBe(digest);
+			expect(r.redactString('abcdef')).toBe(FULL);
+		});
 	});
 });

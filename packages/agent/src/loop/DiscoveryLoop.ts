@@ -26,10 +26,12 @@ import {
 import { buildLocatorLadder } from '../compiler/buildLocatorLadder.js';
 import { createTextGuard } from '../compiler/TextGuard.js';
 import { DiscoveryConfigError } from '../errors/DiscoveryConfigError.js';
+import { ModelCallError } from '../errors/ModelCallError.js';
 import { ToolCallError } from '../errors/ToolCallError.js';
 import { UnlocatableTargetError } from '../errors/UnlocatableTargetError.js';
 import type { ModelClient, ModelRequest } from '../model/ModelClient.js';
 import type { ModelMessage, ModelToolCall, ModelUserContent } from '../model/ModelMessage.js';
+import type { ModelTurn } from '../model/ModelTurn.js';
 import { formatObservation } from '../observe/formatObservation.js';
 import { buildSystemPrompt } from '../prompt/systemPrompt.js';
 import type { CheckpointProposal } from '../tools/CheckpointProposal.js';
@@ -117,6 +119,37 @@ const isDenial = (error: unknown): error is PolicyDeniedError | NavigationBlocke
 
 const isStop = (result: TurnResult | { readonly note: string }): result is Stop => 'stop' in result;
 
+/** The rejection handler of a model call abandoned at the time budget: nothing reads its outcome any more. */
+function ignoreAbandonedCall(error: unknown): void {
+	void error;
+}
+
+type LoggedModelResponse = NonNullable<Extract<RunLogEntryInput, { kind: 'decision' }>['modelResponse']>;
+/** setTimeout's largest delay; a longer budget would overflow and fire at once. */
+const MAX_TIMER_MS = 2_147_483_647;
+const RESPONSE_ID = /^[A-Za-z0-9_-]{1,128}$/;
+const RESPONSE_MODEL = /^[A-Za-z0-9._:@/-]{1,128}$/;
+const RESPONSE_STOP = /^[a-z_]{1,32}$/;
+const tokens = (count: number) => (Number.isSafeInteger(count) && count >= 0 ? count : 0);
+
+/** The run-log `modelResponse` of a turn; fields a provider sent in an unexpected shape are normalized. */
+function modelResponseOf(turn: ModelTurn, latencyMs: number): LoggedModelResponse | undefined {
+	const response = turn.response;
+	if (response === undefined) return undefined;
+	return {
+		responseId: RESPONSE_ID.test(response.id) ? response.id : 'invalid-id',
+		model: RESPONSE_MODEL.test(response.model) ? response.model : 'unknown-model',
+		stopReason: RESPONSE_STOP.test(response.stopReason) ? response.stopReason : 'other',
+		usage: {
+			inputTokens: tokens(turn.usage.inputTokens),
+			outputTokens: tokens(turn.usage.outputTokens),
+			cacheReadInputTokens: tokens(turn.usage.cacheReadInputTokens),
+			cacheCreationInputTokens: tokens(turn.usage.cacheCreationInputTokens),
+		},
+		latencyMs: Math.max(0, Math.round(latencyMs)),
+	};
+}
+
 function traceValue(source: ToolDecision & { kind: 'action' }, literal: string): TraceValue {
 	const valueSource = source.valueSource ?? { kind: 'literal' };
 	if (valueSource.kind === 'param') return { kind: 'param', name: valueSource.name };
@@ -167,9 +200,9 @@ function proposalToCheckpoint(proposal: CheckpointProposal & { kind: 'text' }): 
  * - **Irreversible actions.** `ApprovalRequiredError` → `session.requestApproval` bound to the target's
  *   `fingerprintKey`; granted → act once with the grant; rejected or aborted → stopped `human_aborted`;
  *   unattended or timed out → stopped `policy_blocked` (the action cannot happen without a human).
- * - **Help.** A dead end or `request_help` calls `session.escalate` (unattended, the request is still raised
+ * - **Help.** A dead end, `policyBlockedLimit` consecutive policy denials or `request_help` calls `session.escalate` (unattended, the request is still raised
  *   and persisted). Resumed → the recorded human actions join the trace (actor `human`), the loop re-observes,
- *   reacquires the lease and continues; aborted → `human_aborted`; otherwise `dead_end` / `model_gave_up`.
+ *   reacquires the lease and continues; aborted → `human_aborted`; otherwise `dead_end` / `policy_blocked` / `model_gave_up`.
  * - **Model gives up.** A turn without a tool call stops with `model_gave_up`.
  * - **Redaction.** The model sees only placeholderized, redacted text. Each request is written to
  *   `prompts/turn-NN.json` when the run ends, redacted again with every value known by then (extracted values
@@ -277,8 +310,10 @@ export class DiscoveryLoop {
 
 			const request: ModelRequest = { system, messages: structuredClone(this.#messages), tools };
 			this.#requests.push(request);
-			const turn = await input.model.next(request);
+			const called = await this.#callModel(request);
 			this.#stops.countTurn();
+			if ('stop' in called) return this.#stopped(called);
+			const { turn, latencyMs } = called;
 			this.#messages.push({
 				role: 'assistant',
 				text: input.redactor.placeholderize(turn.text),
@@ -292,7 +327,7 @@ export class DiscoveryLoop {
 					detail: `the model ended its turn without a tool call (${turn.stopReason})`,
 				});
 			}
-			this.#logDecision(call, turn.text);
+			this.#logDecision(call, turn, latencyMs);
 
 			const result = await this.#handle(call);
 			if (isStop(result)) return this.#stopped(result);
@@ -321,6 +356,50 @@ export class DiscoveryLoop {
 				})),
 			];
 			this.#messages.push({ role: 'user', content });
+		}
+	}
+
+	/**
+	 * One model call bounded by the remaining time budget (FR9): the client gets the remaining ms and an abort
+	 * signal, and the loop stops waiting when the budget runs out even if a client ignores both → `timeout`. A
+	 * `ModelCallError` (the provider failed after the client's retries) → `model_error`, with `retryable`.
+	 */
+	async #callModel(
+		request: ModelRequest,
+	): Promise<(Stop & { readonly retryable?: boolean }) | { readonly turn: ModelTurn; readonly latencyMs: number }> {
+		const remainingMs = this.#stops.remainingMs();
+		const controller = new AbortController();
+		const timer = setTimeout(
+			() => controller.abort(new Error('the discovery time budget ran out')),
+			Math.min(remainingMs, MAX_TIMER_MS),
+		);
+		const budgetSpent = new Promise<'timeout'>((resolve) => {
+			controller.signal.addEventListener('abort', () => resolve('timeout'), { once: true });
+		});
+		const started = this.#clock.now().getTime();
+		const call = this.#input.model.next(request, { signal: controller.signal, timeoutMs: remainingMs });
+		try {
+			const turn = await Promise.race([call, budgetSpent]);
+			if (turn === 'timeout') {
+				// The call is abandoned at the budget: its late result or error has no reader any more.
+				void call.catch(ignoreAbandonedCall);
+				return { stop: 'timeout', detail: `${this.#budgetDetail('timeout')} (a model call was cut off)` };
+			}
+			return { turn, latencyMs: Math.max(0, this.#clock.now().getTime() - started) };
+		} catch (error) {
+			if (controller.signal.aborted) {
+				return { stop: 'timeout', detail: `${this.#budgetDetail('timeout')} (a model call was cut off)` };
+			}
+			if (error instanceof ModelCallError) {
+				return {
+					stop: 'model_error',
+					detail: `${error.message} (retryable: ${error.retryable})`,
+					retryable: error.retryable,
+				};
+			}
+			throw error;
+		} finally {
+			clearTimeout(timer);
 		}
 	}
 
@@ -394,12 +473,17 @@ export class DiscoveryLoop {
 				this.#record({ ...base(), fingerprint: this.#safe(fingerprint), verdict: 'refused', errorCode: error.code });
 				const stop = this.#stops.recordDenial();
 				const detail = `${action.kind} denied by policy (${error instanceof PolicyDeniedError ? error.denyCode : error.code})`;
-				if (stop !== null)
-					return {
-						stop,
-						detail: `${this.#stops.options.policyBlockedLimit} consecutive policy denials; last: ${detail}`,
-					};
-				return { content: `Error (${error.code}): ${error.message}. Choose an allowed action.`, isError: true };
+				const feedback = `Error (${error.code}): ${error.message}. Choose an allowed action.`;
+				if (stop === null) return { content: feedback, isError: true };
+				// Repeated denials are a stuck trigger like a dead end or request_help (FR6): an attended run hands
+				// the screen to an operator; unattended (or no answer) it stops with policy_blocked.
+				const help = await this.#askForHelp(
+					'policy_blocked',
+					'policy_blocked',
+					`${this.#stops.options.policyBlockedLimit} consecutive policy denials; last: ${detail}.`,
+				);
+				if (isStop(help)) return help;
+				return { content: `${feedback} ${help.content}`, isError: true };
 			}
 			if (error instanceof ApprovalRequiredError) {
 				this.#record({ ...base(), fingerprint: this.#safe(fingerprint), verdict: 'refused', errorCode: error.code });
@@ -441,7 +525,12 @@ export class DiscoveryLoop {
 		this.#logAction(action, fingerprint, before.url, this.#clock.now().getTime() - started);
 		this.#observation = after;
 
-		const stop = this.#stops.recordAction({ before: before.digest, after: after.digest, progress });
+		const stop = this.#stops.recordAction({
+			before: before.digest,
+			after: after.digest,
+			progress,
+			valueOnly: action.kind === 'fill' || action.kind === 'select',
+		});
 		if (stop !== null) {
 			const help = await this.#askForHelp(
 				'dead_end',
@@ -490,7 +579,7 @@ export class DiscoveryLoop {
 
 	/** Escalates to an operator; resumed → the human actions join the trace and the loop continues. */
 	async #askForHelp(
-		otherwise: 'dead_end' | 'model_gave_up',
+		otherwise: 'dead_end' | 'model_gave_up' | 'policy_blocked',
 		code: string,
 		text: string,
 	): Promise<Stop | { readonly content: string; readonly isError: false }> {
@@ -681,17 +770,19 @@ export class DiscoveryLoop {
 		return observation;
 	}
 
-	#logDecision(call: ModelToolCall, text: string): void {
+	#logDecision(call: ModelToolCall, turn: ModelTurn, latencyMs: number): void {
 		const input =
 			call.input !== null && typeof call.input === 'object' && !Array.isArray(call.input)
 				? (call.input as Record<string, unknown>)
 				: { value: call.input };
-		const reason = typeof input['reason'] === 'string' ? input['reason'] : text;
+		const reason = typeof input['reason'] === 'string' ? input['reason'] : turn.text;
+		const modelResponse = modelResponseOf(turn, latencyMs);
 		this.#log({
 			kind: 'decision',
 			reason: this.#input.redactor.placeholderize(reason || '(no reason given)').slice(0, 3000),
 			tool: TOOL_NAME.test(call.name) && call.name.length <= 64 ? call.name : 'unknown_tool',
 			input: this.#input.redactor.placeholderize(input),
+			...(modelResponse === undefined ? {} : { modelResponse }),
 		});
 	}
 
@@ -733,7 +824,7 @@ export class DiscoveryLoop {
 		} as RunLogEntryInput);
 	}
 
-	#stopped(stop: Stop): DiscoveryOutcome {
+	#stopped(stop: Stop & { readonly retryable?: boolean }): DiscoveryOutcome {
 		return {
 			kind: 'stopped',
 			reason: stop.stop,
@@ -741,6 +832,7 @@ export class DiscoveryLoop {
 			trace: this.#trace(),
 			turns: this.#stops.turns,
 			...(stop.requestId === undefined ? {} : { interventionRequestId: stop.requestId }),
+			...(stop.retryable === undefined ? {} : { retryable: stop.retryable }),
 		};
 	}
 

@@ -52,6 +52,8 @@ Codes most relevant here:
   through `ControlClient` (which holds the token) and renders what comes back, already redacted.
 - Every interpolated value goes through `escapeHtml`. No inline handlers; the one inline script and style
   carry the per-response CSP nonce.
+- Every route but `GET /login` needs the session cookie issued by `/login?k=<IDP_OPERATOR_KEY>` (one-time key,
+  constant-time compare; HttpOnly, SameSite=Strict). The console key is never the control token.
 - Every POST is CSRF-checked (form token + Origin / Sec-Fetch-Site); every request is Host-checked.
 - Buttons appear only for actions the request offers and the lease allows.
 
@@ -60,8 +62,8 @@ Codes most relevant here:
 ```
 src/
   main.ts                 process entry: env → ControlClient → OperatorServer; exit 64 on bad config
-  config.ts               loadOperatorConfig (IDP_CONTROL_URL, IDP_CONTROL_TOKEN, IDP_OPERATOR_PORT)
-  server.ts               OperatorServer: routes, proxying, CSRF / Host checks, CSP
+  config.ts               loadOperatorConfig (IDP_CONTROL_URL, IDP_CONTROL_TOKEN, IDP_OPERATOR_KEY, IDP_OPERATOR_PORT)
+  server.ts               OperatorServer: login + session cookie, routes, proxying, CSRF / Host checks, CSP
   OperatorControl.ts      the ControlClient operations the console uses
   stateVersion.ts         fingerprint of lease + requests (the polling script reloads on change)
   http/                   readForm, safeReturnPath, securityHeaders

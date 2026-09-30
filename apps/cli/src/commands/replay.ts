@@ -3,7 +3,7 @@
 import { parseCommandArgs } from '../args/parseCommandArgs.js';
 import { parseKeyValues } from '../args/parseKeyValues.js';
 import type { CommandSpec } from '../args/CommandSpec.js';
-import { userPath, type CliContext } from '../cli/CliContext.js';
+import { displayPath, userPath, type CliContext } from '../cli/CliContext.js';
 import { exitCodeFor } from '../cli/exitCodes.js';
 import { EnvCredentialProvider } from '../config/EnvCredentialProvider.js';
 import { loadConfig } from '../config/loadConfig.js';
@@ -12,6 +12,7 @@ import { CliUsageError } from '../errors/CliUsageError.js';
 import { removeControlFiles, writeControlFiles } from '../operator/writeControlFiles.js';
 import { printResult } from '../output/printResult.js';
 import { resolveRunsRoot } from '../paths/resolveRunsRoot.js';
+import { attendedWarning } from '../replay/attendedWarning.js';
 import { loadArtifactFile } from '../replay/loadArtifactFile.js';
 import { runReplay } from '../replay/runReplay.js';
 import { controlPortFrom } from './controlPort.js';
@@ -39,7 +40,11 @@ export const spec = {
 			description:
 				'An operator is present: approvals and takeovers wait for them. Prints the control URL and the token file for `idp operator`.',
 		},
-		headed: { type: 'boolean', description: 'Show the browser window (default: headless).' },
+		headed: {
+			type: 'boolean',
+			description:
+				'Show the browser window (default: headless). An attended takeover needs it; while no operator holds control the window blocks all input.',
+		},
 		'runs-root': {
 			type: 'string',
 			valueName: 'dir',
@@ -68,6 +73,8 @@ export async function run(args: readonly string[], context: CliContext): Promise
 	const params = parseKeyValues(values.param, '--param');
 	const attended = values.attended === true;
 	const { printer, env } = context;
+	const warning = attendedWarning({ attended, headed: values.headed === true });
+	if (warning !== null) printer.error(warning);
 
 	const config = await loadConfig({ ...context, env, profile: values.profile });
 	const { document, artifact } = await loadArtifactFile(userPath(context, values.artifact));
@@ -101,15 +108,20 @@ export async function run(args: readonly string[], context: CliContext): Promise
 				controlToken: session.controlToken,
 			});
 			printer.line(`attended session: control API at ${files.controlUrl}`);
-			printer.line(`control token written to ${files.tokenFile} (mode 0600; it is not printed)`);
+			printer.line(`control token written to ${displayPath(context, files.tokenFile)} (mode 0600; it is not printed)`);
 			printer.line(
-				`operator console: pnpm idp operator --control-url ${files.controlUrl} --token-file ${files.tokenFile}`,
+				`operator console: pnpm idp operator --control-url ${files.controlUrl} --token-file ${displayPath(context, files.tokenFile)}`,
 			);
 		},
 		onSessionClosed: async (session) => {
 			if (attended) await removeControlFiles(session.runDir.path);
 		},
 	});
-	printResult(printer, { result: run.result, redactor: run.redactor, outputs: artifact.outputs, runDir: run.runDir });
+	printResult(printer, {
+		result: run.result,
+		redactor: run.redactor,
+		outputs: artifact.outputs,
+		runDir: displayPath(context, run.runDir),
+	});
 	return exitCodeFor(run.result);
 }

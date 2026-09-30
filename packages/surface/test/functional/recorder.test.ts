@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { CapabilityArtifactSchema, type TargetRef } from '@idp/artifact-schema';
 import { resolvePolicy } from '@idp/policy';
+import type { PolicyConfig } from '@idp/artifact-schema';
 import type { Page } from 'playwright';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { browserInternals } from '../../src/playwright/BrowserHandle.js';
@@ -94,15 +95,32 @@ describe('surface: human-action recorder (mediated control)', () => {
 		await bank?.stop();
 	});
 
-	/** Signs on through the guard (replay), then hands the session to a simulated human under the recorder. */
-	async function handoff(prepare?: (guard: PolicyGuardedSurface) => Promise<void>): Promise<Handoff> {
+	/**
+	 * Signs on through the guard (replay), then hands the session to a simulated human under the recorder.
+	 * `humanActions`: the action kinds the human's policy allows (default: the mock-bank policy's).
+	 */
+	async function handoff(
+		prepare?: (guard: PolicyGuardedSurface) => Promise<void>,
+		options: { readonly humanActions?: PolicyConfig['allow']['actions']; readonly lock?: boolean } = {},
+	): Promise<Handoff> {
 		const session = await browser.newSession({ origin: bank.origin });
+		const grants = new ApprovalGrantRegistry({ clock: { now: () => new Date() } });
+		const config = mockBankPolicyConfig(bank.origin);
 		const guard = new PolicyGuardedSurface({
 			inner: session.surface,
-			policy: resolvePolicy(mockBankPolicyConfig(bank.origin)),
+			policy: resolvePolicy(config),
 			origin: bank.origin,
-			grants: new ApprovalGrantRegistry({ clock: { now: () => new Date() } }),
+			grants,
 		});
+		const humanGuard =
+			options.humanActions === undefined
+				? guard
+				: new PolicyGuardedSurface({
+						inner: session.surface,
+						policy: resolvePolicy({ ...config, allow: { ...config.allow, actions: options.humanActions } }),
+						origin: bank.origin,
+						grants,
+					});
 		await guard.act({ kind: 'navigate', actor, route: '/' });
 		await guard.act({ kind: 'fill', actor, target: t(lookup('s02-fill-user-id')), value: 'teller01', sensitive: true });
 		await guard.act({
@@ -122,7 +140,8 @@ describe('surface: human-action recorder (mediated control)', () => {
 		const recorder = new HumanActionRecorder(session.handle);
 		recorders.push(recorder);
 		const records: RecordedHumanAction[] = [];
-		await recorder.start(guard, (record) => records.push(record));
+		if (options.lock === true) await recorder.lock({ message: 'Automation is in control' });
+		await recorder.start(humanGuard, (record) => records.push(record));
 		return {
 			guard,
 			operator: new SimulatedOperator(session.handle),
@@ -363,7 +382,7 @@ describe('surface: human-action recorder (mediated control)', () => {
 		});
 	});
 
-	it('after stop the capture script is inert: gestures are neither blocked nor recorded', async () => {
+	it('after stop, unlocked (unattended), the capture script is inert: gestures are neither blocked nor recorded', async () => {
 		const { guard, operator, recorder, records, requests } = await handoff();
 		await recorder.stop();
 		await operator.type(memberInput, '12345');
@@ -371,5 +390,92 @@ describe('surface: human-action recorder (mediated control)', () => {
 		expect(await guard.check(textIn('Member Inquiry'), {}, 10_000)).toEqual({ kind: 'held' });
 		expect(records).toHaveLength(0);
 		expect(requests('/member/detail')).toBe(1);
+	});
+
+	it('after stop, locked (attended): gestures are blocked with a banner and not recorded; automation acts still work', async () => {
+		const { guard, operator, recorder, records, page, requests } = await handoff(undefined, { lock: true });
+		await recorder.stop();
+		await operator.type(memberInput, '12345');
+		await operator.click(searchButton);
+		await operator.press('Enter');
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(requests('/member/detail')).toBe(0);
+		expect(records).toHaveLength(0);
+		expect(await guard.check(textIn('Member Search'), {}, 0)).toEqual({ kind: 'held' });
+		expect(await guard.check(textIn('Automation is in control'), {}, 2_000)).toEqual({ kind: 'held' });
+		const typed = await page.frame({ name: 'content' })?.locator('input[type=text]').first().inputValue();
+		expect(typed).toBe('');
+		// The automation's own (policy-guarded) acts go through inside automationAct.
+		await recorder.automationAct(() =>
+			guard.act({ kind: 'fill', actor, target: t(memberInput), value: '12345', sensitive: true }),
+		);
+		await recorder.automationAct(() => guard.act({ kind: 'click', actor, target: t(searchButton) }));
+		expect(await guard.check(textIn('Member Inquiry'), {}, 10_000)).toEqual({ kind: 'held' });
+		expect(requests('/member/detail')).toBe(1);
+		// ...and the new document is locked again once the act is over.
+		await operator.click(subAccount('s07-click-open-sub-account'));
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(await guard.check(textIn('Member Inquiry'), {}, 0)).toEqual({ kind: 'held' });
+		expect(records).toHaveLength(0);
+	});
+
+	it('a refused human fill is reverted to the value the field had and a banner shows', async () => {
+		const { guard, operator, records, page } = await handoff(undefined, {
+			humanActions: ['navigate', 'click', 'select', 'press', 'extract', 'wait', 'dismiss_dialog'],
+		});
+		await operator.type(memberInput, '12345');
+		await operator.press('Tab');
+		await until(() => records.length >= 1, 'the refused fill');
+		expect(records[0]).toMatchObject({ kind: 'fill', verdict: 'deny', refused: true });
+		const field = page.frame({ name: 'content' })?.locator('input[type=text]').first();
+		expect(await field?.inputValue()).toBe('');
+		expect(await guard.check(textIn('Refused by policy'), {}, 2_000)).toEqual({ kind: 'held' });
+	});
+
+	/** Signs on and opens the Open Sub-Account form (the product dropdown), through the guard. */
+	const openSubAccountForm = async (surface: PolicyGuardedSurface) => {
+		await surface.act({ kind: 'fill', actor, target: t(memberInput), value: '12345', sensitive: true });
+		await surface.act({ kind: 'click', actor, target: t(searchButton) });
+		await surface.act({ kind: 'click', actor, target: t(subAccount('s07-click-open-sub-account')) });
+		expect(await surface.check(textIn('Open Sub-Account'), {}, 10_000)).toEqual({ kind: 'held' });
+	};
+	/** Counts the change events the page's own listener on the product dropdown sees. */
+	const countProductChanges = async (page: Page) => {
+		const content = page.frame({ name: 'content' });
+		await content?.evaluate(() => {
+			const w = window as unknown as { __changes: number };
+			w.__changes = 0;
+			document.querySelector('select')?.addEventListener('change', () => {
+				w.__changes += 1;
+			});
+		});
+		return async () => (await content?.evaluate(() => (window as unknown as { __changes: number }).__changes)) ?? -1;
+	};
+
+	it('an allowed human select: the page sees the change once, from the policy-guarded re-execution', async () => {
+		const { operator, records, page } = await handoff(openSubAccountForm);
+		const changes = await countProductChanges(page);
+		const select = page.frame({ name: 'content' })?.locator('select').first();
+		await select?.focus();
+		await operator.press('v');
+		await until(() => records.length >= 1, 'the select');
+		expect(records[0]).toMatchObject({ kind: 'select', value: 'Vacation Savings', verdict: 'allow', refused: false });
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(await changes()).toBe(1);
+		expect(await select?.inputValue()).toBe('Vacation Savings');
+	});
+
+	it("a refused human select never reaches the page's onchange and is reverted", async () => {
+		const { operator, records, page } = await handoff(openSubAccountForm, {
+			humanActions: ['navigate', 'click', 'fill', 'press', 'extract', 'wait', 'dismiss_dialog'],
+		});
+		const changes = await countProductChanges(page);
+		const select = page.frame({ name: 'content' })?.locator('select').first();
+		await select?.focus();
+		await operator.press('v');
+		await until(() => records.length >= 1, 'the refused select');
+		expect(records[0]).toMatchObject({ kind: 'select', verdict: 'deny', refused: true });
+		expect(await changes()).toBe(0);
+		expect(await select?.inputValue()).toBe('Holiday Club');
 	});
 });

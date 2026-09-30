@@ -160,4 +160,47 @@ describe('surface: the locator ladder against mock-bank', () => {
 		const absent = await surface.check({ kind: 'element_absent', target: searchButton }, {}, 0);
 		expect(absent.kind).toBe('not_held');
 	});
+
+	it('late_render: waits (bounded) for a Search button rendered 1.5 s after the page loaded', async () => {
+		await tenantA.setFault('late_render', { delayMs: 1_500 });
+		const surface = await signedOn(tenantA);
+		const started = Date.now();
+		const resolution = await surface.resolve(searchButton);
+		expect(resolution).toMatchObject({ rungIndex: 0, rungKind: 'role' });
+		expect(Date.now() - started).toBeGreaterThan(500);
+		await surface.act({
+			kind: 'fill',
+			actor: 'replay',
+			target: { kind: 'target', target: target('Member #', [formRow('Member #')]) },
+			value: '12345',
+			sensitive: true,
+		});
+		await surface.act({
+			kind: 'click',
+			actor: 'replay',
+			target: { kind: 'target', target: searchButton },
+			timeoutMs: 10_000,
+		});
+		expect(await surface.check({ kind: 'text_present', text: 'Member Inquiry', frame: content }, {}, 10_000)).toEqual({
+			kind: 'held',
+		});
+	});
+
+	it('negative checkpoints do not pass on a page that cannot be read (a missing frame scope)', async () => {
+		const surface = await signedOn(tenantA);
+		const missing = [{ kind: 'by_name' as const, name: 'no-such-frame' }];
+		const textAbsent = await surface.check({ kind: 'text_absent', text: 'Anything', frame: missing }, {}, 300);
+		expect(textAbsent).toMatchObject({ kind: 'not_held' });
+		expect(textAbsent.kind === 'not_held' && textAbsent.observed).toMatch(/^frame unreadable: frame hop 0/);
+		const elementAbsent = await surface.check(
+			{ kind: 'element_absent', target: { ...searchButton, frame: missing } },
+			{},
+			300,
+		);
+		expect(elementAbsent.kind === 'not_held' && elementAbsent.observed).toMatch(/^frame unreadable: frame hop 0/);
+		// A readable frame without the text still passes.
+		expect(await surface.check({ kind: 'text_absent', text: 'No such text', frame: content }, {}, 0)).toEqual({
+			kind: 'held',
+		});
+	});
 });

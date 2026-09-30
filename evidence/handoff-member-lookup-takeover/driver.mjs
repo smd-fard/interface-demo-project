@@ -1,4 +1,5 @@
-// Evidence driver for the AC11 human-takeover scenario (R6.2–R6.4). Throwaway: it lives outside the repo.
+// Evidence driver for the human-takeover scenario (R6.2–R6.4), kept next to its evidence so the run can be
+// reproduced: `IDP_NO_DOTENV=1 node evidence/handoff-member-lookup-takeover/driver.mjs` from the repo root.
 //
 // Why a script and not `idp replay --attended` + a separate operator process: the CLI launches its own
 // Playwright browser and exposes no remote-debugging / CDP hook, so nothing outside the CLI process can put
@@ -12,11 +13,14 @@
 //     captures them like a person's gestures. No person was at the keyboard.
 //
 // Inputs come from the env (never literals): IDP_DEMO_MEMBER_ID, MOCKBANK_OPERATOR_USER,
-// MOCKBANK_OPERATOR_PASSWORD, MOCKBANK_ORIGIN, IDP_CONTROL_PORT, IDP_RUNS_ROOT. The repo root is REPO.
+// MOCKBANK_OPERATOR_PASSWORD, MOCKBANK_ORIGIN, IDP_CONTROL_PORT, IDP_RUNS_ROOT. The repo root is derived from
+// this file's location; printed paths are relative to it.
 import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const REPO = process.env.REPO ?? '/Users/mos/Workspaces/interface-demo-project';
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const rel = (p) => path.relative(REPO, p);
 const cli = (p) => path.join(REPO, 'apps/cli/dist', p);
 const { loadConfig } = await import(cli('config/loadConfig.js'));
 const { loadArtifactFile } = await import(cli('replay/loadArtifactFile.js'));
@@ -73,7 +77,7 @@ const run = await runReplay({
 	config,
 	credentials,
 	sensitiveValues,
-	runsRoot: env.IDP_RUNS_ROOT,
+	runsRoot: env.IDP_RUNS_ROOT === undefined ? undefined : path.resolve(REPO, env.IDP_RUNS_ROOT),
 	attended: true,
 	headed: false,
 	controlPort: controlPortFrom(env),
@@ -82,7 +86,7 @@ const run = await runReplay({
 			controlUrl: session.controlUrl,
 			controlToken: session.controlToken,
 		});
-		console.log(`attended session: control API at ${files.controlUrl}; run dir ${session.runDir.path}`);
+		console.log(`attended session: control API at ${files.controlUrl}; run dir ${rel(session.runDir.path)}`);
 		liveSession = session;
 		operatorTask = actAsOperator(session);
 		operatorTask.catch((error) => console.error('operator failed:', error.message));
@@ -132,5 +136,5 @@ const states = ['AGENT', ...liveSession.lease.history().map((t) => t.to)].filter
 console.log(`lease path: ${states.join(' → ')}`);
 console.log(`result.kind = ${run.result.kind}`);
 console.log(await readFile(path.join(run.runDir, 'result.json'), 'utf8'));
-console.log(`run dir: ${run.runDir}`);
+console.log(`run dir: ${rel(run.runDir)}`);
 process.exit(run.result.kind === 'success' ? 0 : 1);

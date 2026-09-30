@@ -138,7 +138,31 @@ describe('AnthropicModelClient', () => {
 			stopReason: 'tool_use',
 			usage: { inputTokens: 120, outputTokens: 30, cacheReadInputTokens: 100, cacheCreationInputTokens: 0 },
 			providerContent: response().content,
+			response: { id: 'msg_1', model: 'claude-sonnet-5-5', stopReason: 'tool_use' },
 		});
+	});
+
+	it('reports the raw provider stop reason and the model the API returned', async () => {
+		sdk.create.mockResolvedValue(
+			response({ id: 'msg_01XY', model: 'claude-sonnet-5-5-20260901', stop_reason: 'pause_turn' }),
+		);
+		const turn = await new AnthropicModelClient({ env }).next(request);
+		expect(turn.response).toEqual({ id: 'msg_01XY', model: 'claude-sonnet-5-5-20260901', stopReason: 'pause_turn' });
+		expect(turn.stopReason).toBe('other');
+	});
+
+	it('caps the per-request timeout at the remaining budget and passes the abort signal', async () => {
+		sdk.create.mockResolvedValue(response());
+		const controller = new AbortController();
+		await new AnthropicModelClient({ env, timeoutMs: 120_000 }).next(request, {
+			signal: controller.signal,
+			timeoutMs: 4_500,
+		});
+		expect(sdk.create.mock.calls[0]?.[1]).toEqual({ signal: controller.signal, timeout: 4_500 });
+		await new AnthropicModelClient({ env, timeoutMs: 10_000 }).next(request, { timeoutMs: 60_000 });
+		expect(sdk.create.mock.calls[1]?.[1]).toEqual({ timeout: 10_000 });
+		await new AnthropicModelClient({ env }).next(request);
+		expect(sdk.create.mock.calls[2]?.[1]).toEqual({});
 	});
 
 	it('echoes providerContent verbatim for an assistant turn (keeps thinking blocks valid)', async () => {

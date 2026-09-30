@@ -78,6 +78,10 @@ export interface InterventionServiceOptions {
 
 interface Waiter {
 	readonly resolve: (resolution: InterventionResolution) => void;
+	/** The request expired: rejects with `InterventionTimeoutError`. */
+	readonly expire: (error: InterventionTimeoutError) => void;
+	/** The request was claimed (takeover): the wait continues under the claimed bound, if one was given. */
+	readonly claimed: () => void;
 }
 
 interface Entry {
@@ -85,8 +89,24 @@ interface Entry {
 	version: number;
 	ref: EvidenceRef;
 	resolution?: InterventionResolution;
+	/**
+	 * Nobody resolved it in time and the run gave up on it: it can no longer be claimed, approved or rejected,
+	 * and is no longer listed. (The persisted document keeps its last status: the contract has no `expired`.)
+	 */
+	expired: boolean;
 	readonly binding?: GrantBindingInput;
 	readonly waiters: Set<Waiter>;
+}
+
+/** Bounds of `awaitResolution`. */
+export interface AwaitResolutionOptions {
+	/** How long to wait while the request is open (default: indefinitely). On timeout the request expires. */
+	readonly timeoutMs?: number;
+	/**
+	 * Takeover: once the request is claimed, the wait restarts under this bound (the operator's time at the
+	 * controls). Omitted: `timeoutMs` bounds the whole wait, claimed or not. On timeout the request expires.
+	 */
+	readonly claimedTimeoutMs?: number;
 }
 
 const OPTIONS: Record<InterventionRequest['kind'], InterventionDecision[]> = {
@@ -114,6 +134,10 @@ function typedCode(error: unknown): string | undefined {
  * single-use grant, lease PAUSED → RESUMING), `reject` (approval, lease PAUSED → CLOSED), `resume` (the claimed
  * takeover, lease HUMAN → RESUMING), `abort` (lease → CLOSED, every unresolved request aborted). The lease
  * transition runs first: when it is illegal, the request does not change. Operations are serialized.
+ *
+ * Expiry: a request nobody resolved within the bound of `awaitResolution` expires — it is no longer listed and
+ * claim / approve / reject answer `InterventionConflictError` (`expired`), so a late operator cannot act on a run
+ * that has already failed `timeout`.
  */
 export class InterventionService {
 	private readonly entries = new Map<string, Entry>();
@@ -126,14 +150,19 @@ export class InterventionService {
 		this.random = options.random ?? systemRandom;
 	}
 
-	/** Every request, in raise order (the latest version of each; redacted). */
+	/** Every live request, in raise order (the latest version of each; redacted). Expired requests are left out. */
 	list(): readonly InterventionRequest[] {
-		return [...this.entries.values()].map((entry) => entry.request);
+		return [...this.entries.values()].filter((entry) => !entry.expired).map((entry) => entry.request);
 	}
 
 	/** The latest (redacted) version of one request, or undefined for an unknown id. */
 	get(id: string): InterventionRequest | undefined {
 		return this.entries.get(id)?.request;
+	}
+
+	/** Whether the request expired (nobody resolved it in time; see `awaitResolution`). */
+	isExpired(id: string): boolean {
+		return this.entries.get(id)?.expired ?? false;
 	}
 
 	/** The ref of the latest persisted version of a request. */
@@ -153,30 +182,50 @@ export class InterventionService {
 	}
 
 	/**
-	 * Resolves with the request's resolution (immediately if already resolved). Rejects with
-	 * `InterventionTimeoutError` after `timeoutMs` (default: wait indefinitely), `InterventionNotFoundError` for
-	 * an unknown id.
+	 * Resolves with the request's resolution (immediately if already resolved). While the request is open the wait
+	 * is bounded by `timeoutMs`; once a takeover is claimed, by `claimedTimeoutMs` when given (a claim does not
+	 * resolve the request, the operator's resume or abort does). When a bound passes the request **expires** (it
+	 * can no longer be claimed, approved or rejected; every waiter rejects with `InterventionTimeoutError`).
+	 * Rejects with `InterventionTimeoutError` at once for an expired request, `InterventionNotFoundError` for an
+	 * unknown id.
 	 */
-	awaitResolution(id: string, options: { readonly timeoutMs?: number } = {}): Promise<InterventionResolution> {
+	awaitResolution(id: string, options: AwaitResolutionOptions = {}): Promise<InterventionResolution> {
 		const entry = this.entries.get(id);
 		if (entry === undefined) return Promise.reject(new InterventionNotFoundError(id));
 		if (entry.resolution !== undefined) return Promise.resolve(entry.resolution);
+		if (entry.expired) return Promise.reject(new InterventionTimeoutError(id, options.timeoutMs ?? 0));
 		return new Promise<InterventionResolution>((resolve, reject) => {
 			let timer: NodeJS.Timeout | undefined;
+			let generation = 0;
+			const arm = (ms: number | undefined) => {
+				if (timer !== undefined) clearTimeout(timer);
+				generation += 1;
+				if (ms === undefined) return;
+				const armed = generation;
+				timer = setTimeout(() => {
+					void this.serialize(async () => {
+						// Resolved, re-armed by a claim, or expired meanwhile: this timer is stale.
+						if (armed !== generation || entry.resolution !== undefined || entry.expired) return;
+						this.expire(entry, new InterventionTimeoutError(id, ms));
+					});
+				}, ms);
+			};
 			const waiter: Waiter = {
 				resolve: (resolution) => {
-					if (timer !== undefined) clearTimeout(timer);
+					arm(undefined);
 					resolve(resolution);
+				},
+				expire: (error) => {
+					arm(undefined);
+					reject(error);
+				},
+				claimed: () => {
+					if (options.claimedTimeoutMs !== undefined) arm(options.claimedTimeoutMs);
 				},
 			};
 			entry.waiters.add(waiter);
-			const timeoutMs = options.timeoutMs;
-			if (timeoutMs !== undefined) {
-				timer = setTimeout(() => {
-					entry.waiters.delete(waiter);
-					reject(new InterventionTimeoutError(id, timeoutMs));
-				}, timeoutMs);
-			}
+			if (entry.request.status === 'claimed') waiter.claimed();
+			if (timer === undefined) arm(options.timeoutMs);
 		});
 	}
 
@@ -185,7 +234,9 @@ export class InterventionService {
 		return this.serialize(async () => {
 			const entry = this.expect(id, 'claim', 'takeover', 'open');
 			await this.options.lease.cede(operator);
-			return this.update(entry, { ...entry.request, status: 'claimed' }, operator, 'claimed');
+			const claimed = await this.update(entry, { ...entry.request, status: 'claimed' }, operator, 'claimed');
+			for (const waiter of entry.waiters) waiter.claimed();
+			return claimed;
 		});
 	}
 
@@ -224,7 +275,7 @@ export class InterventionService {
 		return this.serialize(async () => {
 			await this.options.lease.resume(operator);
 			const claimed = [...this.entries.values()].find(
-				(entry) => entry.request.kind === 'takeover' && entry.request.status === 'claimed',
+				(entry) => !entry.expired && entry.request.kind === 'takeover' && entry.request.status === 'claimed',
 			);
 			return claimed === undefined ? null : this.resolveEntry(claimed, 'resumed', operator);
 		});
@@ -235,7 +286,7 @@ export class InterventionService {
 		return this.serialize(async () => {
 			await this.options.lease.close(operator, 'operator aborted');
 			for (const entry of this.entries.values()) {
-				if (entry.request.status !== 'resolved') await this.resolveEntry(entry, 'aborted', operator);
+				if (entry.request.status !== 'resolved' && !entry.expired) await this.resolveEntry(entry, 'aborted', operator);
 			}
 		});
 	}
@@ -258,6 +309,7 @@ export class InterventionService {
 		const entry = this.entries.get(id);
 		if (entry === undefined) throw new InterventionNotFoundError(id);
 		if (entry.request.kind !== kind) throw new InterventionConflictError(id, operation, 'wrong_kind');
+		if (entry.expired) throw new InterventionConflictError(id, operation, 'expired');
 		if (entry.request.status !== status) throw new InterventionConflictError(id, operation, 'wrong_status');
 		return entry;
 	}
@@ -299,6 +351,7 @@ export class InterventionService {
 			version: 1,
 			ref,
 			...(binding === undefined ? {} : { binding }),
+			expired: false,
 			waiters: new Set(),
 		});
 		runLog.log({
@@ -387,6 +440,13 @@ export class InterventionService {
 			requestRef: entry.ref,
 		});
 		return entry.request;
+	}
+
+	/** Expires a request (called inside the serialized queue): no longer actionable; every waiter rejects. */
+	private expire(entry: Entry, error: InterventionTimeoutError): void {
+		entry.expired = true;
+		for (const waiter of entry.waiters) waiter.expire(error);
+		entry.waiters.clear();
 	}
 
 	private async resolveEntry(

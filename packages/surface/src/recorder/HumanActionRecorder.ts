@@ -21,6 +21,7 @@ import {
 	TOKEN_ATTRIBUTE,
 	type CaptureCommand,
 	type CaptureConfig,
+	type CaptureMode,
 	type PassKind,
 } from './captureScript.js';
 import type { DomEventDescriptor } from './DomEventDescriptor.js';
@@ -42,7 +43,17 @@ export interface HumanActionRecorderOptions {
 	 * omitted they are kept in `errors`. Never swallowed.
 	 */
 	readonly onError?: (error: unknown) => void;
+	/**
+	 * Whether a native dialog blocks the page's script right now (then no frame can be evaluated). Default: the
+	 * recording guard's `pendingDialog()`, or false while not recording. The live session passes the surface's.
+	 */
+	readonly dialogPending?: () => boolean;
 }
+
+/** The banner shown when the page is locked and a person touches it (see `lock`). */
+export const DEFAULT_BLOCK_MESSAGE =
+	'Automation is in control of this window (or it is waiting for an operator decision): your input was blocked. ' +
+	'Take control from the operator console first.';
 
 type Recordable = Omit<RecordedHumanAction, 'seq' | 'at'>;
 
@@ -50,9 +61,9 @@ interface Active {
 	readonly guard: PolicyGuardedSurface;
 	readonly onRecorded: RecordListener;
 	readonly page: Page;
-	readonly config: CaptureConfig;
+	/** The exposed binding's (random) name. */
+	readonly bindingName: string;
 	readonly binding: Disposable;
-	readonly initScript: Disposable;
 	readonly onRequestFailed: (request: Request) => void;
 }
 
@@ -87,6 +98,12 @@ function typedCode(error: unknown): string | undefined {
  * allowed `navigate`, both with the URL as a sensitive value), `extract` and `wait` (reading and waiting are
  * not actions on the page), and `dismiss_dialog` (a native dialog is held by the surface, outside the page:
  * the operator settles it with `settleDialog`, recorded as `dismiss_dialog`).
+ *
+ * Locked page (`lock`, attended sessions): between recordings — while the automation holds the lease or the
+ * session waits for an operator — the capture script stays installed in `block` mode, so a person at a headed
+ * browser cannot click, type, select or submit anything unmediated (e.g. an irreversible Confirm while its
+ * approval is pending). The automation's own input gets through only inside `automationAct`, which the live
+ * session wraps around each policy-allowed automation act.
  */
 export class HumanActionRecorder {
 	/** Unexpected processing errors, when no `onError` is given. */
@@ -96,10 +113,23 @@ export class HumanActionRecorder {
 	private seq = 0;
 	private readonly stateKey = `__idpCapture_${randomUUID().replaceAll('-', '')}`;
 	private readonly clock: Clock;
-	/** The secret of the last recording (documents keyed with it are re-keyed by the next `start`). */
-	private lastSecret: string | null = null;
+	/** The current secret of the capture controls (rotated by `lock` and `start`). */
+	private secret = newSecret();
+	/** The secret before the last rotation: documents still keyed with it are re-keyed. */
+	private previousSecret: string | null = null;
 	/** Frames whose pass could not be cleared while a dialog blocked the page; cleared once it is settled. */
 	private readonly staleFrames: Frame[] = [];
+	/** `lock`: the page is in `block` mode whenever it is not recording. */
+	private locked = false;
+	private blockMessage = DEFAULT_BLOCK_MESSAGE;
+	/** Automation acts in progress (`automationAct`). */
+	private automationDepth = 0;
+	/** The one registered init script (the capture script for new documents, with the current config). */
+	private initScript: Disposable | null = null;
+	/** Page reconfigurations, serialized. */
+	private configQueue: Promise<void> = Promise.resolve();
+	/** The open documents missed a reconfiguration because a native dialog blocked them; retried until applied. */
+	private staleTimer: NodeJS.Timeout | null = null;
 
 	constructor(
 		private readonly handle: BrowserHandle,
@@ -112,47 +142,71 @@ export class HumanActionRecorder {
 		return this.active !== null;
 	}
 
-	/** Starts mediating: installs the capture script in every frame (current and future) and enables it. */
+	/** Whether the page is locked between recordings (`lock`). */
+	get isLocked(): boolean {
+		return this.locked;
+	}
+
+	/**
+	 * Locks the page for the rest of the session: whenever the recorder is not recording, the capture script runs
+	 * in `block` mode in every frame (current and future) and blocks every trusted gesture with a banner. Use
+	 * `automationAct` around the automation's own acts. Idempotent.
+	 */
+	async lock(options: { readonly message?: string } = {}): Promise<void> {
+		this.locked = true;
+		if (options.message !== undefined) this.blockMessage = options.message;
+		await this.reconfigure(true);
+	}
+
+	/**
+	 * Runs one automation act on a locked page: the page lets input through while it runs (the session calls this
+	 * only after the policy allowed the act). Not locked, or recording (the lease keeps the automation out then):
+	 * just runs it.
+	 */
+	async automationAct<T>(run: () => Promise<T>): Promise<T> {
+		if (!this.locked || this.active !== null || this.handle.closed) return run();
+		this.automationDepth += 1;
+		try {
+			if (this.automationDepth === 1) await this.reconfigure(false);
+			return await run();
+		} finally {
+			this.automationDepth -= 1;
+			if (this.automationDepth === 0) await this.reconfigure(false);
+		}
+	}
+
+	/** Starts mediating: the capture script records in every frame (current and future). */
 	async start(guard: PolicyGuardedSurface, onRecorded: RecordListener): Promise<void> {
 		if (this.active !== null) throw new RecorderStateError('already_recording');
 		const { context, page, networkGuard } = browserInternals(this.handle);
-		const config: CaptureConfig = {
-			binding: `__idpRecord_${newSecret()}`,
-			stateKey: this.stateKey,
-			secret: newSecret(),
-			previousSecret: this.lastSecret,
-			enabled: true,
-			tokenAttribute: TOKEN_ATTRIBUTE,
-		};
-		this.lastSecret = config.secret;
-		const binding = await context.exposeBinding(config.binding, (source: { frame: Frame }, descriptor: unknown) => {
+		const bindingName = `__idpRecord_${newSecret()}`;
+		const binding = await context.exposeBinding(bindingName, (source: { frame: Frame }, descriptor: unknown) => {
 			this.enqueue(() => this.onGesture(source.frame, descriptor as DomEventDescriptor));
 		});
-		const initScript = await context.addInitScript(installCaptureScript, config);
 		const onRequestFailed = (request: Request) => {
 			if (request.isNavigationRequest() && (request.failure()?.errorText ?? '').includes('ERR_BLOCKED_BY_CLIENT')) {
 				this.enqueue(() => this.onBlockedNavigation(request.url()));
 			}
 		};
 		page.on('requestfailed', onRequestFailed);
-		const active: Active = { guard, onRecorded, page, config, binding, initScript, onRequestFailed };
+		const active: Active = { guard, onRecorded, page, bindingName, binding, onRequestFailed };
 		this.active = active;
 		networkGuard.setNavigationHook((request) => this.onNavigationRequest(active, request));
-		await this.inEveryFrame(page, (frame) => frame.evaluate(installCaptureScript, config));
+		await this.reconfigure(true);
 	}
 
-	/** Stops mediating: the capture script goes inert in every frame; waits for gestures in flight. */
+	/**
+	 * Stops mediating: the capture script goes back to `block` (locked) or inert in every frame; waits for
+	 * gestures in flight.
+	 */
 	async stop(): Promise<void> {
 		const active = this.active;
 		if (active === null) return;
 		this.active = null;
 		browserInternals(this.handle).networkGuard.setNavigationHook(null);
 		active.page.off('requestfailed', active.onRequestFailed);
-		if (!this.handle.closed) {
-			await active.initScript.dispose();
-			// `disable` also drops any pass left in the document.
-			await this.inEveryFrame(active.page, (frame) => this.command(frame, active, { op: 'disable' }));
-		}
+		// Reconfiguring also drops any pass left in the document.
+		await this.reconfigure(false);
 		await this.queue;
 		this.staleFrames.splice(0);
 		if (!this.handle.closed) {
@@ -163,6 +217,84 @@ export class HumanActionRecorder {
 				}, TOKEN_ATTRIBUTE),
 			);
 		}
+	}
+
+	/** The capture mode the page should be in now. */
+	private mode(): CaptureMode {
+		if (this.active !== null) return 'record';
+		return this.locked ? 'block' : 'off';
+	}
+
+	private dialogPending(): boolean {
+		if (this.options.dialogPending !== undefined) return this.options.dialogPending();
+		return this.active !== null && this.active.guard.pendingDialog() !== null;
+	}
+
+	/**
+	 * Applies the current mode to new documents (one init script, replaced) and to every open frame. Serialized.
+	 * While a native dialog blocks the page's script the open frames are retried until the dialog is gone.
+	 */
+	private reconfigure(rotate: boolean): Promise<void> {
+		const task = this.configQueue.then(() => this.applyConfig(rotate));
+		this.configQueue = task.catch(() => undefined);
+		return task;
+	}
+
+	private async applyConfig(rotate: boolean): Promise<void> {
+		if (this.handle.closed) return;
+		if (rotate) {
+			this.previousSecret = this.secret;
+			this.secret = newSecret();
+		}
+		const config = this.config();
+		const { context, page } = browserInternals(this.handle);
+		const previous = this.initScript;
+		// Registered before the old one goes: a document starting in between runs both, the newer config last.
+		this.initScript = config.mode === 'off' ? null : await context.addInitScript(installCaptureScript, config);
+		await previous?.dispose();
+		if (this.dialogPending()) {
+			this.retryWhenDialogGone();
+			return;
+		}
+		await this.inEveryFrame(page, (frame) => frame.evaluate(installCaptureScript, config));
+	}
+
+	private config(): CaptureConfig {
+		return {
+			binding: this.active?.bindingName ?? '',
+			stateKey: this.stateKey,
+			secret: this.secret,
+			previousSecret: this.previousSecret,
+			mode: this.mode(),
+			automation: this.automationDepth > 0,
+			blockMessage: this.blockMessage,
+			tokenAttribute: TOKEN_ATTRIBUTE,
+		};
+	}
+
+	private retryWhenDialogGone(): void {
+		if (this.staleTimer !== null) return;
+		this.staleTimer = setInterval(() => {
+			if (this.handle.closed) {
+				this.clearStaleTimer();
+				return;
+			}
+			if (this.dialogPending()) return;
+			this.clearStaleTimer();
+			void this.reconfigure(false).catch((error: unknown) => this.report(error));
+		}, 100);
+		this.staleTimer.unref();
+	}
+
+	private clearStaleTimer(): void {
+		if (this.staleTimer === null) return;
+		clearInterval(this.staleTimer);
+		this.staleTimer = null;
+	}
+
+	private report(error: unknown): void {
+		if (this.options.onError !== undefined) this.options.onError(error);
+		else this.errors.push(error);
 	}
 
 	/**
@@ -180,7 +312,7 @@ export class HumanActionRecorder {
 				{ kind: 'dismiss_dialog', fingerprint: null, value: action, sensitive: false, verdict: null, refused: true },
 				() => active.guard.act({ kind: 'dismiss_dialog', actor: 'human', match: dialog.message, action }),
 			);
-			if (active.guard.pendingDialog() === null) await this.clearStaleMarks(active);
+			if (active.guard.pendingDialog() === null) await this.clearStaleMarks();
 			return record;
 		});
 		this.queue = task.then(
@@ -191,10 +323,7 @@ export class HumanActionRecorder {
 	}
 
 	private enqueue(task: () => Promise<void>): void {
-		this.queue = this.queue.then(task).catch((error: unknown) => {
-			if (this.options.onError !== undefined) this.options.onError(error);
-			else this.errors.push(error);
-		});
+		this.queue = this.queue.then(task).catch((error: unknown) => this.report(error));
 	}
 
 	private async inEveryFrame(page: Page, run: (frame: Frame) => Promise<unknown>): Promise<void> {
@@ -274,7 +403,7 @@ export class HumanActionRecorder {
 		const active = this.active;
 		// Stopped meanwhile (the gesture stays blocked), or a descriptor the capture script did not write.
 		if (active === null || typeof descriptor?.token !== 'string' || !TOKEN.test(descriptor.token)) return;
-		if (active.guard.pendingDialog() === null) await this.clearStaleMarks(active);
+		if (active.guard.pendingDialog() === null) await this.clearStaleMarks();
 		if (active.guard.pendingDialog() !== null) {
 			// A native dialog blocks the page's script: the element cannot be inspected, so nothing is performed.
 			this.emit(active, {
@@ -316,15 +445,18 @@ export class HumanActionRecorder {
 					if (typedCode(error) !== undefined) return false;
 					throw error;
 				}));
+		const valued = gesture.kind === 'fill' || gesture.kind === 'select';
 		if (target === null || !same) {
-			this.emit(active, { ...base, errorCode: 'TARGET_NOT_REPLAYABLE' });
+			const record = this.emit(active, { ...base, errorCode: 'TARGET_NOT_REPLAYABLE' });
+			if (valued) await this.settleValue(element, record);
 			return;
 		}
 
 		const action = toAction(gesture, target);
 		let passed = false;
+		let record: RecordedHumanAction;
 		try {
-			await this.perform(
+			record = await this.perform(
 				active,
 				base,
 				() =>
@@ -334,7 +466,7 @@ export class HumanActionRecorder {
 							passed = true;
 							await element.evaluate(passCaptureScript, {
 								stateKey: this.stateKey,
-								secret: active.config.secret,
+								secret: this.secret,
 								command: { op: 'pass' as const, kind: passKindOf(action.kind) },
 							});
 						},
@@ -343,6 +475,25 @@ export class HumanActionRecorder {
 			);
 		} finally {
 			if (passed) await this.clearPass(active, frame);
+		}
+		if (valued) await this.settleValue(element, record);
+	}
+
+	/**
+	 * After the verdict on a human fill or select: an accepted value becomes the one to revert to; a refused one
+	 * is reverted in the page (the person's value never stays on screen unperformed). Skipped while a native
+	 * dialog blocks the page, or when the element is gone.
+	 */
+	private async settleValue(element: Locator, record: RecordedHumanAction): Promise<void> {
+		if (this.dialogPending()) return;
+		try {
+			await element.evaluate(passCaptureScript, {
+				stateKey: this.stateKey,
+				secret: this.secret,
+				command: { op: 'settle' as const, accepted: !record.refused },
+			});
+		} catch (error) {
+			if (!isGoneFrameError(error)) throw error;
 		}
 	}
 
@@ -383,8 +534,8 @@ export class HumanActionRecorder {
 	}
 
 	/** Sends a command to the capture control of one frame (ignored when its document has none). */
-	private async command(frame: Frame, active: Active, command: CaptureCommand): Promise<void> {
-		await frame.evaluate(commandCaptureScript, { stateKey: this.stateKey, secret: active.config.secret, command });
+	private async command(frame: Frame, command: CaptureCommand): Promise<void> {
+		await frame.evaluate(commandCaptureScript, { stateKey: this.stateKey, secret: this.secret, command });
 	}
 
 	/** Drops what is left of a pass. While a native dialog blocks the page's script, deferred until it is settled. */
@@ -393,17 +544,17 @@ export class HumanActionRecorder {
 			this.staleFrames.push(frame);
 			return;
 		}
-		await this.clearIn(active, frame);
+		await this.clearIn(frame);
 	}
 
-	private async clearStaleMarks(active: Active): Promise<void> {
-		for (const frame of this.staleFrames.splice(0)) await this.clearIn(active, frame);
+	private async clearStaleMarks(): Promise<void> {
+		for (const frame of this.staleFrames.splice(0)) await this.clearIn(frame);
 	}
 
-	private async clearIn(active: Active, frame: Frame): Promise<void> {
+	private async clearIn(frame: Frame): Promise<void> {
 		if (frame.isDetached()) return;
 		try {
-			await this.command(frame, active, { op: 'clear' });
+			await this.command(frame, { op: 'clear' });
 		} catch (error) {
 			if (!isGoneFrameError(error)) throw error;
 		}

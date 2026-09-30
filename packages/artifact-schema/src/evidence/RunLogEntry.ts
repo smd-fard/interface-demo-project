@@ -81,6 +81,36 @@ const ObservationSchema = entry(
 	'The screen was observed.',
 );
 
+const TokenCountSchema = z.int().min(0);
+
+const ModelResponseSchema = z
+	.strictObject({
+		responseId: z
+			.string()
+			.regex(/^[A-Za-z0-9_-]{1,128}$/)
+			.describe('The provider response id, e.g. "msg_01…"; "scripted-<n>" for the scripted model.'),
+		model: z
+			.string()
+			.regex(/^[A-Za-z0-9._:@/-]{1,128}$/)
+			.describe('The model the provider says answered (may differ from the requested alias).'),
+		stopReason: z
+			.string()
+			.regex(/^[a-z_]{1,32}$/)
+			.describe('The provider stop reason, e.g. "tool_use", "end_turn", "max_tokens".'),
+		usage: z
+			.strictObject({
+				inputTokens: TokenCountSchema,
+				outputTokens: TokenCountSchema,
+				cacheReadInputTokens: TokenCountSchema,
+				cacheCreationInputTokens: TokenCountSchema,
+			})
+			.describe('Token usage of the call (zeros for the scripted model).'),
+		latencyMs: z.int().min(0).describe('Wall time of the model call, in milliseconds (retries included).'),
+	})
+	.describe(
+		'Metadata of the model response behind a decision. Ids, enums and counts only (no free text), so it is kept verbatim by the run-log redaction.',
+	);
+
 const DecisionSchema = entry(
 	'decision',
 	{
@@ -93,6 +123,9 @@ const DecisionSchema = entry(
 		input: z
 			.record(z.string().max(64), z.unknown())
 			.describe('The tool input as the model sent it, placeholderized and redacted.'),
+		modelResponse: ModelResponseSchema.optional().describe(
+			'The model response of this turn (since the review-fixes change; absent in older logs).',
+		),
 	},
 	'A model decision. Discovery runs only: replay has no model in the loop (invariant 1).',
 );

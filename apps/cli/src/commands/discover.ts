@@ -3,13 +3,20 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { OutputSpec, ParamSpec, RunResult } from '@idp/artifact-schema';
-import { AnthropicModelClient, DiscoveryRunner, ScriptedModel, type ModelClient } from '@idp/agent';
+import {
+	AnthropicModelClient,
+	DiscoveryRunner,
+	ScriptedModel,
+	type DiscoverySessionInfo,
+	type ModelClient,
+} from '@idp/agent';
 import type { Redacted } from '@idp/policy';
 import { parseCommandArgs } from '../args/parseCommandArgs.js';
 import { parseKeyValues } from '../args/parseKeyValues.js';
 import { parseOutputFlag } from '../args/parseOutputFlag.js';
+import { removeControlFiles, writeControlFiles } from '../operator/writeControlFiles.js';
 import type { CommandSpec } from '../args/CommandSpec.js';
-import { userPath, type CliContext } from '../cli/CliContext.js';
+import { displayPath, userPath, type CliContext } from '../cli/CliContext.js';
 import { EXIT } from '../cli/exitCodes.js';
 import { EnvCredentialProvider } from '../config/EnvCredentialProvider.js';
 import { loadConfig } from '../config/loadConfig.js';
@@ -50,7 +57,7 @@ export const spec = {
 			multiple: true,
 			valueName: 'name:type',
 			description:
-				'Declare an output (type string|integer|boolean|decimal[:scale], scale default 2; always sensitive). When given, these are the complete output list; omit to keep the outputs the model declares.',
+				'Declare an output (type string|integer|decimal[:scale], scale default 2; always sensitive). When given, these are the complete output list; omit to keep the outputs the model declares. boolean is not supported: extract reads text, so declare a yes/no value as string.',
 		},
 		model: {
 			type: 'string',
@@ -92,7 +99,8 @@ export const spec = {
 		},
 		attended: {
 			type: 'boolean',
-			description: 'An operator is present: interventions wait for them (control URL printed).',
+			description:
+				'An operator is present: interventions wait for them. The control URL and token file are printed (the token never is); `idp operator` finds the session.',
 		},
 		headed: { type: 'boolean', description: 'Show the browser window (default: headless).' },
 		'runs-root': {
@@ -108,7 +116,7 @@ export const spec = {
 	notes: [
 		'Params: each --input becomes a required string param (no pattern) named after its key; tighten the type in the artifact afterwards if needed (any edit changes the content hash: re-hash it).',
 		'Output: the redacted discovery outcome, the discovery run dir, the verify-replay summary and run dir, and the saved artifact path. Example inputs, credentials and extracted values are never printed.',
-		'Exit codes: 0 goal met (and verified, and saved), 4 discovery stopped without meeting the goal, 1 failure (verify-replay did not succeed, missing ANTHROPIC_API_KEY, config or credential error), 64 usage error.',
+		'Exit codes: 0 goal met (and verified, and saved), 4 discovery stopped without meeting the goal, 1 failure (the model API failed after its retries, verify-replay did not succeed, missing ANTHROPIC_API_KEY, config or credential error), 64 usage error.',
 		'Env: ANTHROPIC_API_KEY and IDP_MODEL (--model anthropic only), MOCKBANK_ORIGIN / MOCKBANK_PORT, MOCKBANK_OPERATOR_USER / MOCKBANK_OPERATOR_PASSWORD, IDP_CONTROL_PORT, IDP_RUNS_ROOT. Read from .env at the repo root when present (skipped with IDP_NO_DOTENV=1).',
 	],
 } as const satisfies CommandSpec;
@@ -141,7 +149,39 @@ function paramSpecs(inputs: Readonly<Record<string, string>>, sensitive: Readonl
 }
 
 /**
- * Runs `idp discover`: the discovery loop, compilation, verify-replay and save; returns 0, 4 (stopped) or 1.
+ * `--output name:type` for discovery. `boolean` is refused: an extract step has no boolean parse (text, decimal,
+ * integer), so the value would be a string and the output would fail validation on every replay.
+ */
+function parseDiscoverOutput(flag: string): OutputSpec {
+	const output = parseOutputFlag(flag);
+	if (output.type.kind === 'boolean') {
+		throw new CliUsageError(
+			`--output ${flag}: boolean outputs are not supported (extract reads text); declare it as ${output.name}:string`,
+			spec.name,
+		);
+	}
+	return output;
+}
+
+/** Prints where an attended discovery session's control API is and writes its control files (never the token). */
+async function announceControl(context: CliContext, session: DiscoverySessionInfo): Promise<void> {
+	if (session.controlUrl === null || session.controlToken === null) return;
+	const { printer } = context;
+	printer.redactor.addSensitiveValue(session.controlToken);
+	const files = await writeControlFiles(session.runDir, {
+		controlUrl: session.controlUrl,
+		controlToken: session.controlToken,
+	});
+	printer.line(`attended session: control API at ${files.controlUrl}`);
+	printer.line(`control token written to ${displayPath(context, files.tokenFile)} (mode 0600; it is not printed)`);
+	printer.line(
+		`operator console: pnpm idp operator --control-url ${files.controlUrl} --token-file ${displayPath(context, files.tokenFile)}`,
+	);
+}
+
+/**
+ * Runs `idp discover`: the discovery loop, compilation, verify-replay and save; returns 0, 4 (stopped) or 1
+ * (a model API failure, or verify-replay did not succeed).
  * @throws CliUsageError on bad flags; ConfigError on config, credential or model setup errors.
  */
 export async function run(args: readonly string[], context: CliContext): Promise<number> {
@@ -151,7 +191,7 @@ export async function run(args: readonly string[], context: CliContext): Promise
 	const inputs = parseKeyValues(values.input, '--input');
 	const sensitive = new Set(values.sensitive ?? []);
 	const params = paramSpecs(inputs, sensitive);
-	const outputs: OutputSpec[] | undefined = values.output?.map(parseOutputFlag);
+	const outputs: OutputSpec[] | undefined = values.output?.map(parseDiscoverOutput);
 	const { printer, env } = context;
 	// Seed the printer before anything is printed: example inputs (sensitive or not, they are concrete values).
 	for (const [name, value] of Object.entries(inputs)) printer.redactor.addSensitiveValue({ value, paramName: name });
@@ -181,17 +221,29 @@ export async function run(args: readonly string[], context: CliContext): Promise
 		...(values.attended === true ? { controlPort: controlPortFrom(env) } : {}),
 		...(values.id === undefined ? {} : { id: values.id }),
 		...(values.title === undefined ? {} : { title: values.title }),
+		...(values.attended === true
+			? {
+					onSessionOpen: (session: DiscoverySessionInfo) => announceControl(context, session),
+					onSessionClosed: (session: DiscoverySessionInfo) => removeControlFiles(session.runDir),
+				}
+			: {}),
 	}).run();
-	printer.line(`discovery run dir: ${discovery.runDir}`);
+	printer.line(`discovery run dir: ${displayPath(context, discovery.runDir)}`);
 
 	const { outcome, artifact } = discovery;
 	if (outcome.kind === 'stopped') {
 		printer.line(`discovery stopped: ${outcome.reason} after ${outcome.turns} model turn(s): ${outcome.detail}`);
+		if (outcome.reason === 'model_error') {
+			printer.error(
+				`the model API failed after its retries (${outcome.retryable === true ? 'transient: try again later' : 'not retryable'})`,
+			);
+			return EXIT.failure;
+		}
 		return EXIT.discoveryStopped;
 	}
 	if (artifact === undefined) throw new Error('discovery met its goal but returned no artifact');
 	printer.line(
-		`discovery goal met after ${outcome.turns} model turn(s): compiled ${artifact.id}@${artifact.version} (${artifact.steps.length} steps) → ${discovery.artifactPath ?? ''}`,
+		`discovery goal met after ${outcome.turns} model turn(s): compiled ${artifact.id}@${artifact.version} (${artifact.steps.length} steps) → ${discovery.artifactPath === undefined ? '' : displayPath(context, discovery.artifactPath)}`,
 	);
 
 	if (values['verify-replay']) {
@@ -209,7 +261,7 @@ export async function run(args: readonly string[], context: CliContext): Promise
 		});
 		printer.useRedactor(verify.redactor);
 		printer.line(`verify-replay ${summarize(verify.result, verify.redactor, artifact.outputs)}`);
-		printer.line(`verify-replay run dir: ${verify.runDir}`);
+		printer.line(`verify-replay run dir: ${displayPath(context, verify.runDir)}`);
 		if (!isSuccess(verify.result)) {
 			printer.error('verify-replay did not succeed: the artifact was not saved (it stays in the discovery run dir)');
 			return EXIT.failure;
@@ -227,7 +279,7 @@ export async function run(args: readonly string[], context: CliContext): Promise
 	// extracted value (it is the same document the discovery run wrote as artifact.json).
 	const safe = artifact as Redacted<typeof artifact>;
 	await writeFile(out, `${JSON.stringify(safe, null, '\t')}\n`);
-	printer.line(`artifact saved: ${out}`);
+	printer.line(`artifact saved: ${displayPath(context, out)}`);
 	return EXIT.success;
 }
 

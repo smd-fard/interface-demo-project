@@ -272,6 +272,53 @@ describe('InterventionService', () => {
 		expect(interventions.get(request.id)?.status).toBe('open');
 	});
 
+	it('a timed-out request expires: no longer listed, and claim / approve answer a conflict (expired)', async () => {
+		const interventions = service();
+		const request = await interventions.raise(takeover());
+		await expect(interventions.awaitResolution(request.id, { timeoutMs: 20 })).rejects.toBeInstanceOf(
+			InterventionTimeoutError,
+		);
+		expect(interventions.isExpired(request.id)).toBe(true);
+		expect(interventions.list()).toEqual([]);
+		const claim = await interventions.claim(request.id, OPS).catch((caught: unknown) => caught);
+		expect(claim).toBeInstanceOf(InterventionConflictError);
+		expect(claim).toMatchObject({ problem: 'expired' });
+		expect(lease.state()).toBe('PAUSED');
+		await expect(interventions.awaitResolution(request.id)).rejects.toBeInstanceOf(InterventionTimeoutError);
+	});
+
+	it('an expired approval cannot be approved later', async () => {
+		const interventions = service();
+		const request = await interventions.raise(approval());
+		await expect(interventions.awaitResolution(request.id, { timeoutMs: 20 })).rejects.toBeInstanceOf(
+			InterventionTimeoutError,
+		);
+		await expect(interventions.approve(request.id, OPS)).rejects.toMatchObject({ problem: 'expired' });
+		expect(lease.state()).toBe('PAUSED');
+	});
+
+	it('a claim restarts the wait under claimedTimeoutMs: the operator may hold control past timeoutMs', async () => {
+		const interventions = service();
+		const request = await interventions.raise(takeover());
+		const resolution = interventions.awaitResolution(request.id, { timeoutMs: 60, claimedTimeoutMs: 5_000 });
+		await interventions.claim(request.id, OPS);
+		await new Promise((resolve) => setTimeout(resolve, 150));
+		expect(interventions.isExpired(request.id)).toBe(false);
+		await interventions.resume(OPS);
+		await expect(resolution).resolves.toMatchObject({ decision: 'resumed', by: OPS });
+	});
+
+	it('a claimed takeover that outlasts claimedTimeoutMs expires; resume then resolves nothing', async () => {
+		const interventions = service();
+		const request = await interventions.raise(takeover());
+		const resolution = interventions.awaitResolution(request.id, { timeoutMs: 5_000, claimedTimeoutMs: 30 });
+		await interventions.claim(request.id, OPS);
+		await expect(resolution).rejects.toMatchObject({ code: 'INTERVENTION_TIMEOUT', timeoutMs: 30 });
+		expect(interventions.isExpired(request.id)).toBe(true);
+		expect(lease.state()).toBe('HUMAN');
+		expect(await interventions.resume(OPS)).toBeNull();
+	});
+
 	it('abort closes the lease and resolves every unresolved request as aborted', async () => {
 		const interventions = service();
 		const request = await interventions.raise(takeover());

@@ -24,6 +24,8 @@ const target = (ladder: LocatorRung[], frame: TargetRef['frame'] = [{ kind: 'by_
 function setup(counts: Record<string, number | (() => number)>[]) {
 	const tree = fakeFrameTree({ url: 'http://bank.test/', children: [{ name: 'content', url: 'http://bank.test/x' }] });
 	let attempt = -1;
+	let clock = 0;
+	const sleeps: number[] = [];
 	const calls: { frame: string; kind: string; attempt: number }[] = [];
 	const resolver = new LadderResolver<FakeFrame, { count(): Promise<number>; kind: string }>({
 		root: () => {
@@ -41,9 +43,13 @@ function setup(counts: Record<string, number | (() => number)>[]) {
 				},
 			};
 		},
-		sleep: async () => undefined,
+		sleep: async (ms) => {
+			sleeps.push(ms);
+			clock += ms;
+		},
+		now: () => clock,
 	});
-	return { resolver, calls };
+	return { resolver, calls, sleeps };
 }
 
 describe('LadderResolver', () => {
@@ -105,6 +111,57 @@ describe('LadderResolver', () => {
 		);
 	});
 
+	it('polls until a late element renders within the bound (the top rung wins once it is there)', async () => {
+		// Nothing for four passes, then the element is there for every rung.
+		const late: Record<string, number>[] = [{}, {}, {}, {}, { role: 1, text: 1 }];
+		const { resolver, sleeps } = setup(late);
+		expect(await resolver.resolve(target([role, text]), {}, 5_000)).toMatchObject({ rungIndex: 0, rungKind: 'role' });
+		expect(sleeps).toEqual([100, 150, 225, 250]);
+	});
+
+	it('gives up at the bound with the last pass counts, the final pause cut to what is left', async () => {
+		const { resolver, sleeps, calls } = setup([{ role: 0 }]);
+		await expect(resolver.resolve(target([role]), {}, 1_000)).rejects.toBeInstanceOf(TargetNotResolvedError);
+		expect(sleeps).toEqual([100, 150, 225, 250, 250, 25]);
+		expect(sleeps.reduce((sum, ms) => sum + ms, 0)).toBe(1_000);
+		expect(new Set(calls.map((call) => call.attempt)).size).toBe(7);
+	});
+
+	it('timeoutMs 0 is a single pass', async () => {
+		const { resolver, calls, sleeps } = setup([{ role: 0 }, { role: 1 }]);
+		await expect(resolver.resolve(target([role]), {}, 0)).rejects.toBeInstanceOf(TargetNotResolvedError);
+		expect(calls).toHaveLength(1);
+		expect(sleeps).toEqual([]);
+	});
+
+	it('accepts a lower rung in ladder order within a pass while the top rung has no match (documented drift)', async () => {
+		const { resolver } = setup([
+			{ role: 0, text: 1 },
+			{ role: 1, text: 1 },
+		]);
+		expect(await resolver.resolve(target([role, text]), {}, 5_000)).toMatchObject({ rungIndex: 1, rungKind: 'text' });
+	});
+
+	it('waits for a frame that appears late', async () => {
+		let appeared = false;
+		const withFrame = fakeFrameTree({
+			url: 'http://bank.test/',
+			children: [{ name: 'content', url: 'http://bank.test/x' }],
+		});
+		const without = fakeFrameTree({ url: 'http://bank.test/' });
+		let clock = 0;
+		const resolver = new LadderResolver<FakeFrame, { count(): Promise<number> }>({
+			root: () => (appeared ? withFrame : without),
+			toLocator: () => ({ count: async () => 1 }),
+			sleep: async (ms) => {
+				clock += ms;
+				if (clock >= 300) appeared = true;
+			},
+			now: () => clock,
+		});
+		expect(await resolver.resolve(target([role]), {}, 5_000)).toMatchObject({ rungIndex: 0 });
+	});
+
 	it('propagates a missing binding without retrying', async () => {
 		const { resolver } = setup([{ label: 1 }]);
 		const ladder: LocatorRung[] = [{ kind: 'label', text: '{{memberId}}', rationale }];
@@ -114,6 +171,7 @@ describe('LadderResolver', () => {
 				throw new BindingMissingError('memberId');
 			},
 			sleep: async () => undefined,
+			now: () => 0,
 		});
 		await expect(failing.resolve(target(ladder, []), {})).rejects.toBeInstanceOf(BindingMissingError);
 		expect(resolver).toBeDefined();

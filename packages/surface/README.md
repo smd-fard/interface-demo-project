@@ -34,7 +34,7 @@ await handle.close();
 - `SurfaceAction` (one variant per action kind: `navigate`, `click`, `fill`, `select`, `press`, `extract`,
   `wait`, `dismiss_dialog`), `SurfaceActionOf<K>`, `ActionTarget` (`{ kind: 'target', target: TargetRef }` or
   `{ kind: 'ref', ref }`), `Bindings`.
-- `ActOutcome` (`url`, `navigation`, `resolution?`, `extracted?`, `dialog?`, `acceptedDialog?`), `Resolution`,
+- `ActOutcome` (`url`, `navigation`, `resolution?`, `extracted?`, `dialog?`, `acceptedDialog?`, `risk?`), `Resolution`,
   `CheckResult`, `ElementFingerprint`, `ContainerElementKind`, `PendingDialog`, `EvidenceCapture`,
   `SurfaceLocation`.
 

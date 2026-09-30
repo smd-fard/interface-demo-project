@@ -116,8 +116,11 @@ export async function startReplay(start: StartOptions): Promise<StartedRun> {
 			session,
 		};
 	})();
-	// Keep an early rejection from surfacing as unhandled before the test awaits `done`.
-	done.catch(() => undefined);
+	// Keep an early rejection from surfacing as unhandled before the test awaits `done`. Nothing is lost: this
+	// derived promise is discarded, and the test still sees the rejection when it awaits `done` itself.
+	done.catch((early: unknown) => {
+		void early;
+	});
 	return { session, client, done };
 }
 

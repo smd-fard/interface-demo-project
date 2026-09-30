@@ -5,12 +5,16 @@ import type { ApprovalOutcome, EscalationOutcome, SessionHumanAction } from '@id
 import {
 	ApprovalRequiredError,
 	fingerprintKey,
+	PolicyDeniedError,
 	type A11yNode,
 	type ApprovalGrant,
 	type Observation,
 } from '@idp/surface';
 import { FakeSurface, fakeFingerprint, fakeLocation, mockBankPolicyConfig } from '@idp/surface/testing';
 import { describe, expect, it, vi } from 'vitest';
+import { ModelCallError } from '../errors/ModelCallError.js';
+import type { ModelCallOptions, ModelClient, ModelRequest } from '../model/ModelClient.js';
+import type { ModelTurn } from '../model/ModelTurn.js';
 import { ScriptedModel } from '../model/ScriptedModel.js';
 import type { ModelScriptInput } from '../model/ModelScript.js';
 import { DiscoveryLoop } from './DiscoveryLoop.js';
@@ -99,6 +103,10 @@ function harness(options: {
 	readonly approval?: ApprovalOutcome;
 	readonly escalation?: EscalationOutcome;
 	readonly requireApproval?: boolean;
+	/** Every click is denied by policy (pre-action). */
+	readonly denyClicks?: boolean;
+	/** `null` = unattended. */
+	readonly controlUrl?: string | null;
 }): Harness {
 	const logs: RunLogEntryInput[] = [];
 	const prompts: Harness['prompts'] = [];
@@ -107,6 +115,9 @@ function harness(options: {
 		observations: options.observations,
 		fingerprint: (target) => (target.kind === 'ref' && target.ref === 'e1' ? confirm : memberInput),
 		onAct: (action) => {
+			if (options.denyClicks === true && action.kind === 'click') {
+				throw new PolicyDeniedError('click', 'action_not_allowed', 'not allowed', 'pre_action');
+			}
 			if (options.requireApproval === true && action.kind === 'click' && action.approvalGrant === undefined) {
 				throw new ApprovalRequiredError({ actionKind: 'click', reason: 'control name', fingerprint: confirm });
 			}
@@ -117,7 +128,7 @@ function harness(options: {
 	const session: DiscoverySession = {
 		surface,
 		runId: RUN_ID,
-		controlUrl: 'http://127.0.0.1:1',
+		controlUrl: options.controlUrl === undefined ? 'http://127.0.0.1:1' : options.controlUrl,
 		evidence: {
 			putJson: vi.fn(async (name: string, document: unknown, subdir?: 'prompts' | 'interventions') => {
 				prompts.push({ name, document, subdir });
@@ -144,7 +155,11 @@ function harness(options: {
 	return { session, surface, logs, prompts, reacquire };
 }
 
-function run(h: Harness, steps: ModelScriptInput['steps']) {
+function run(
+	h: Harness,
+	steps: ModelScriptInput['steps'] | ModelClient,
+	options: { readonly timeoutMs?: number; readonly clock?: FakeClock } = {},
+) {
 	const redactor = createRedactor({
 		config: policy,
 		sensitiveValues: [{ value: '12345', paramName: 'memberId' }, 'teller01', 'synthetic-pass-01'],
@@ -154,11 +169,25 @@ function run(h: Harness, steps: ModelScriptInput['steps']) {
 		exampleInputs: { memberId: '12345' },
 		credentials: { username: 'teller01', password: 'synthetic-pass-01' },
 		session: h.session,
-		model: new ScriptedModel({ scriptVersion: 1, name: 'unit', steps }),
+		model: Array.isArray(steps) ? new ScriptedModel({ scriptVersion: 1, name: 'unit', steps }) : steps,
 		redactor,
 		policy,
-		options: { clock: new FakeClock() },
+		options: {
+			clock: options.clock ?? new FakeClock(),
+			...(options.timeoutMs === undefined ? {} : { timeoutMs: options.timeoutMs }),
+		},
 	});
+}
+
+/** A fake model client whose call fails, or never settles unless aborted, or answers after a fake delay. */
+class FakeModel implements ModelClient {
+	readonly modelId = 'fake:unit';
+	readonly calls: (ModelCallOptions | undefined)[] = [];
+	constructor(private readonly behave: (options: ModelCallOptions | undefined) => Promise<ModelTurn>) {}
+	next(_request: ModelRequest, options?: ModelCallOptions): Promise<ModelTurn> {
+		this.calls.push(options);
+		return this.behave(options);
+	}
 }
 
 describe('DiscoveryLoop', () => {
@@ -341,6 +370,144 @@ describe('DiscoveryLoop', () => {
 			actor: 'agent',
 			action: { kind: 'navigate', route: '/' },
 			verdict: 'ok',
+		});
+	});
+
+	describe('repeated policy denials (FR6)', () => {
+		it('attended: escalates like a dead end; the operator resumes and the run continues', async () => {
+			const h = harness({
+				observations: [screen('Review'), screen('Opened')],
+				denyClicks: true,
+				escalation: { kind: 'resumed', requestId: REQUEST_ID, humanActions: [] },
+			});
+			const outcome = await run(h, [click, click, click, finish]);
+			expect(h.session.escalate).toHaveBeenCalledOnce();
+			expect(h.session.escalate).toHaveBeenCalledWith(
+				expect.objectContaining({ code: 'policy_blocked' }),
+				expect.objectContaining({ risk: 'read' }),
+			);
+			expect(h.reacquire).toHaveBeenCalledOnce();
+			expect(outcome.kind).toBe('goal_met');
+		});
+
+		it('unattended: the request is raised and the run stops with policy_blocked', async () => {
+			const h = harness({ observations: [screen('Review')], denyClicks: true, controlUrl: null });
+			const outcome = await run(h, [click, click, click]);
+			expect(outcome).toMatchObject({
+				kind: 'stopped',
+				reason: 'policy_blocked',
+				interventionRequestId: REQUEST_ID,
+				detail: expect.stringContaining('3 consecutive policy denials'),
+			});
+			expect(outcome.trace.steps.map((step) => step.verdict)).toEqual(['refused', 'refused', 'refused']);
+		});
+
+		it('an operator abort during a denial escalation stops with human_aborted', async () => {
+			const h = harness({
+				observations: [screen('Review')],
+				denyClicks: true,
+				escalation: { kind: 'aborted', requestId: REQUEST_ID, humanActions: [] },
+			});
+			expect(await run(h, [click, click, click])).toMatchObject({ kind: 'stopped', reason: 'human_aborted' });
+		});
+	});
+
+	describe('model failures and the time budget (FR9)', () => {
+		it('a ModelCallError after the client retries stops with model_error and records retryable', async () => {
+			const h = harness({ observations: [screen('Review')] });
+			const model = new FakeModel(() =>
+				Promise.reject(new ModelCallError('model call failed (HTTP 529): overloaded', 529, true)),
+			);
+			const outcome = await run(h, model);
+			expect(outcome).toMatchObject({
+				kind: 'stopped',
+				reason: 'model_error',
+				retryable: true,
+				turns: 1,
+				detail: expect.stringContaining('retryable: true'),
+			});
+			// The prompt of the failed turn is still written.
+			expect(h.prompts.map((prompt) => prompt.name)).toEqual(['turn-01']);
+		});
+
+		it('any other error from the model client still propagates', async () => {
+			const h = harness({ observations: [screen('Review')] });
+			const model = new FakeModel(() => Promise.reject(new TypeError('a bug')));
+			await expect(run(h, model)).rejects.toBeInstanceOf(TypeError);
+		});
+
+		it('passes the remaining budget to the call and stops with timeout when a call hangs past it', async () => {
+			const h = harness({ observations: [screen('Review')] });
+			// Never settles on its own: only the loop's own deadline ends the wait (even if a client ignores the signal).
+			const model = new FakeModel(() => new Promise<ModelTurn>(() => undefined));
+			const started = Date.now();
+			const outcome = await run(h, model, { timeoutMs: 1_000, clock: new FakeClock() });
+			expect(Date.now() - started).toBeLessThan(5_000);
+			expect(outcome).toMatchObject({ kind: 'stopped', reason: 'timeout' });
+			expect(outcome.kind === 'stopped' && outcome.detail).toContain('a model call was cut off');
+			expect(model.calls[0]?.timeoutMs).toBe(1_000);
+			expect(model.calls[0]?.signal?.aborted).toBe(true);
+		});
+
+		it('a client that honours the abort signal and rejects is reported as timeout, not model_error', async () => {
+			const h = harness({ observations: [screen('Review')] });
+			const model = new FakeModel(
+				(options) =>
+					new Promise<ModelTurn>((_resolve, reject) => {
+						options?.signal?.addEventListener('abort', () =>
+							reject(new ModelCallError('model call failed (APIUserAbortError): aborted', undefined, true)),
+						);
+					}),
+			);
+			const outcome = await run(h, model, { timeoutMs: 50 });
+			expect(outcome).toMatchObject({ kind: 'stopped', reason: 'timeout' });
+		});
+	});
+
+	it('logs the model response metadata with each decision (FR10)', async () => {
+		const h = harness({ observations: [screen('Review'), screen('Opened')] });
+		await run(h, [click, finish]);
+		const decisions = h.logs.filter((entry) => entry.kind === 'decision');
+		expect(decisions.map((entry) => entry.kind === 'decision' && entry.modelResponse)).toEqual([
+			{
+				responseId: 'scripted-1',
+				model: 'scripted:unit',
+				stopReason: 'tool_use',
+				usage: { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0 },
+				latencyMs: 0,
+			},
+			expect.objectContaining({ responseId: 'scripted-2' }),
+		]);
+	});
+
+	it('logs provider metadata and latency from a real-shaped turn', async () => {
+		const clock = new FakeClock();
+		const h = harness({ observations: [screen('Review'), screen('Opened')] });
+		const turns: ModelTurn[] = [
+			{
+				toolCalls: [{ id: 'toolu_1', name: 'request_help', input: { reason: 'The screen shows nothing I can use.' } }],
+				text: '',
+				stopReason: 'tool_use',
+				usage: { inputTokens: 12345, outputTokens: 210, cacheReadInputTokens: 11000, cacheCreationInputTokens: 45 },
+				response: { id: 'msg_01XFDUDYJgAACzvnptvVoYEL', model: 'claude-sonnet-5-5-20260901', stopReason: 'tool_use' },
+			},
+		];
+		const model = new FakeModel(async () => {
+			clock.advance(2_345);
+			const turn = turns.shift();
+			if (turn === undefined) throw new ModelCallError('no more turns', undefined, false);
+			return turn;
+		});
+		await run(h, model, { clock });
+		const [decision] = h.logs.filter((entry) => entry.kind === 'decision');
+		expect(decision).toMatchObject({
+			modelResponse: {
+				responseId: 'msg_01XFDUDYJgAACzvnptvVoYEL',
+				model: 'claude-sonnet-5-5-20260901',
+				stopReason: 'tool_use',
+				usage: { inputTokens: 12345, outputTokens: 210, cacheReadInputTokens: 11000, cacheCreationInputTokens: 45 },
+				latencyMs: 2_345,
+			},
 		});
 	});
 });

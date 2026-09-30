@@ -11,7 +11,7 @@ goes through policy) and invariant 3 (redact before any sink). Serves R4.1 (allo
 irreversible, conservative handling), R4.3 (redaction) and AC9 (same verdict for agent, replay and human).
 
 **Status:** implemented — registry for all eight `ACTION_KINDS`, `evaluateAction` / `evaluateLanding`,
-`classifyRisk`, `resolvePolicy`, `createRedactor` (default rules `REDACTION_RULES_VERSION = '1.1.0'`).
+`classifyRisk`, `resolvePolicy`, `createRedactor` (default rules `REDACTION_RULES_VERSION = '1.2.0'`).
 
 ## Owns
 

@@ -12,6 +12,7 @@ import { EXIT } from '../cli/exitCodes.js';
 import { CliUsageError } from '../errors/CliUsageError.js';
 import { OperatorLaunchError } from '../errors/OperatorLaunchError.js';
 import { findLatestControl } from '../operator/findLatestControl.js';
+import { removeConsoleKey, writeConsoleKey } from '../operator/writeConsoleKey.js';
 import type { Printer } from '../output/Printer.js';
 import { resolveRunsRoot } from '../paths/resolveRunsRoot.js';
 
@@ -49,7 +50,8 @@ export const spec = {
 	],
 	notes: [
 		'Without --control-url/--token-file it uses the most recent <runs root>/*/control.json written by a running `idp replay --attended` (removed when that session ends).',
-		'Runs node apps/operator/dist/main.js (build it first: pnpm --filter @idp/operator build) with IDP_CONTROL_URL, IDP_CONTROL_TOKEN and IDP_OPERATOR_PORT. The token is never printed.',
+		'Runs node apps/operator/dist/main.js (build it first: pnpm --filter @idp/operator build) with IDP_CONTROL_URL, IDP_CONTROL_TOKEN, IDP_OPERATOR_KEY and IDP_OPERATOR_PORT. The control token is never printed.',
+		'The console requires a login: open the one-time URL it prints (http://127.0.0.1:<port>/login?k=<console key>); it sets an HttpOnly session cookie and the key stops working. The console key is a separate random value (not the control token), written to operator.key (mode 0600) next to the token file and removed when the console exits.',
 		'Exit codes: the console’s own exit code; 1 when it cannot start; 64 usage error.',
 	],
 } as const satisfies CommandSpec;
@@ -89,7 +91,8 @@ async function runConsole(main: string, env: NodeJS.ProcessEnv, printer: Printer
 }
 
 /**
- * Runs `idp operator`: spawns the operator console with the control URL and token; returns its exit code.
+ * Runs `idp operator`: writes a one-time console key (0600, next to the token file), spawns the operator console
+ * with the control URL, token and key, removes the key file when it exits; returns its exit code.
  * @throws CliUsageError on bad flags; OperatorLaunchError when no attended session is found or the console cannot start.
  */
 export async function run(args: readonly string[], context: CliContext): Promise<number> {
@@ -124,10 +127,24 @@ export async function run(args: readonly string[], context: CliContext): Promise
 	}
 	const token = await readToken(tokenFile);
 	printer.redactor.addSensitiveValue(token);
-	printer.line(`operator console for ${controlUrl} on port ${port} (token from ${tokenFile})`);
-	return runConsole(
-		main,
-		{ ...process.env, IDP_CONTROL_URL: controlUrl, IDP_CONTROL_TOKEN: token, IDP_OPERATOR_PORT: port },
-		printer,
+	// A separate one-time console login key (never the control token): the console prints its login URL with it.
+	const { key, keyFile } = await writeConsoleKey(path.dirname(tokenFile));
+	printer.line(
+		`operator console for ${controlUrl} on port ${port} (token from ${tokenFile}; console key in ${keyFile})`,
 	);
+	try {
+		return await runConsole(
+			main,
+			{
+				...process.env,
+				IDP_CONTROL_URL: controlUrl,
+				IDP_CONTROL_TOKEN: token,
+				IDP_OPERATOR_KEY: key,
+				IDP_OPERATOR_PORT: port,
+			},
+			printer,
+		);
+	} finally {
+		await removeConsoleKey(keyFile);
+	}
 }

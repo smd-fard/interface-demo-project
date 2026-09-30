@@ -264,7 +264,8 @@ export class PolicyGuardedSurface implements Surface {
 			}
 		}
 		this.report({ kind: 'allow' }, intent, 'landing');
-		return outcome;
+		// The effective (never lowered) risk the verdict classified: an approval is only ever asked for irreversible.
+		return { ...outcome, risk: verdict.risk };
 	}
 
 	observe(opts?: ObserveOptions): Promise<Observation> {

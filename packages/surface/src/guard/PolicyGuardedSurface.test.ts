@@ -86,6 +86,7 @@ describe('PolicyGuardedSurface: allow', () => {
 		const { inner, guard, verdicts } = harness();
 		const outcome = await guard.act({ kind: 'click', actor: 'replay', stepId: 's06', target: search });
 		expect(outcome.kind).toBe('click');
+		expect(outcome.risk).toBe('reversible');
 		expect(inner.acts).toHaveLength(1);
 		expect(inner.acts[0]).toMatchObject({ kind: 'click', stepId: 's06' });
 		expect(verdicts[0]).toMatchObject({
@@ -276,7 +277,16 @@ describe('PolicyGuardedSurface: require_approval and grants', () => {
 	it('a matching grant (by stepId) lets the action through once, with the grant, and consumes it', async () => {
 		const { inner, guard, grants } = harness();
 		const grant = grants.mint({ requestId: 'req-1', stepId: 's12', grantedBy: 'op-1' });
-		await guard.act({ kind: 'click', actor: 'replay', stepId: 's12', target: confirm, approvalGrant: grant });
+		const outcome = await guard.act({
+			kind: 'click',
+			actor: 'replay',
+			stepId: 's12',
+			declaredRisk: 'reversible',
+			target: confirm,
+			approvalGrant: grant,
+		});
+		// The control name raised the declared "reversible" to irreversible: the outcome carries the effective risk.
+		expect(outcome.risk).toBe('irreversible');
 		expect(inner.acts).toHaveLength(1);
 		expect(inner.acts[0]?.approvalGrant).toEqual(grant);
 

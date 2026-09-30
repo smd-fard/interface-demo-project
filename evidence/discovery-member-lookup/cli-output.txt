@@ -1,7 +1,7 @@
 discovering with anthropic:claude-sonnet-5-5 against http://127.0.0.1:4211 (profile tenant-a)
-discovery run dir: /private/tmp/claude-501/-Users-mos-Workspaces-interface-demo-project/c1f8d9fb-1c07-4cc6-8b66-fc0647e23a3d/scratchpad/real2/runs/discovery-20260930T033842-7774
-discovery goal met after 8 model turn(s): compiled member-lookup@1.0.0 (7 steps) → /private/tmp/claude-501/-Users-mos-Workspaces-interface-demo-project/c1f8d9fb-1c07-4cc6-8b66-fc0647e23a3d/scratchpad/real2/runs/discovery-20260930T033842-7774/artifact.json
+discovery run dir: .runs/evidence/runs/discovery-20260930T191747-2ede
+discovery goal met after 8 model turn(s): compiled member-lookup@1.0.0 (7 steps) → .runs/evidence/runs/discovery-20260930T191747-2ede/artifact.json
 verify-replay: replaying the new artifact once with the example inputs
-verify-replay success: member-lookup@1.0.0 in 1.4 s, 0 recoveries; outputs: savingsBalance=[REDACTED]
-verify-replay run dir: /private/tmp/claude-501/-Users-mos-Workspaces-interface-demo-project/c1f8d9fb-1c07-4cc6-8b66-fc0647e23a3d/scratchpad/real2/runs/replay-20260930T033858-a16a
-artifact saved: /private/tmp/claude-501/-Users-mos-Workspaces-interface-demo-project/c1f8d9fb-1c07-4cc6-8b66-fc0647e23a3d/scratchpad/real2/member-lookup.json
+verify-replay success: member-lookup@1.0.0 in 1.5 s, 0 recoveries; outputs: savingsBalance=[REDACTED]
+verify-replay run dir: .runs/evidence/runs/replay-20260930T191804-af3b
+artifact saved: .runs/evidence/member-lookup.json

@@ -3,9 +3,11 @@ import { loadOperatorConfig } from './config.js';
 import { OperatorConfigError } from './errors/OperatorConfigError.js';
 
 const TOKEN = 'ab'.repeat(32);
+const KEY = 'consoleloginkey'.repeat(3);
 const env = (overrides: Record<string, string | undefined> = {}) => ({
 	IDP_CONTROL_URL: 'http://127.0.0.1:53211',
 	IDP_CONTROL_TOKEN: TOKEN,
+	IDP_OPERATOR_KEY: KEY,
 	...overrides,
 });
 
@@ -15,6 +17,7 @@ describe('loadOperatorConfig', () => {
 			controlUrl: 'http://127.0.0.1:53211',
 			controlToken: TOKEN,
 			port: 4030,
+			loginKey: KEY,
 		});
 	});
 
@@ -30,6 +33,10 @@ describe('loadOperatorConfig', () => {
 		['IDP_CONTROL_URL', { IDP_CONTROL_URL: 'file:///etc/passwd' }],
 		['IDP_CONTROL_TOKEN', { IDP_CONTROL_TOKEN: undefined }],
 		['IDP_CONTROL_TOKEN', { IDP_CONTROL_TOKEN: '   ' }],
+		['IDP_OPERATOR_KEY', { IDP_OPERATOR_KEY: undefined }],
+		['IDP_OPERATOR_KEY', { IDP_OPERATOR_KEY: 'short' }],
+		['IDP_OPERATOR_KEY', { IDP_OPERATOR_KEY: `${KEY}/../` }],
+		['IDP_OPERATOR_KEY', { IDP_OPERATOR_KEY: TOKEN }],
 		['IDP_OPERATOR_PORT', { IDP_OPERATOR_PORT: 'abc' }],
 		['IDP_OPERATOR_PORT', { IDP_OPERATOR_PORT: '70000' }],
 		['IDP_OPERATOR_PORT', { IDP_OPERATOR_PORT: '-1' }],

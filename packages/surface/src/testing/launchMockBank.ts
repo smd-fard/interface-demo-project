@@ -40,12 +40,8 @@ export interface MockBank {
 /** The origin in a `listening <url>` line, or `null`. */
 export function parseListeningLine(line: string): string | null {
 	const url = /listening (https?:\/\/\S+)/.exec(line)?.[1];
-	if (url === undefined) return null;
-	try {
-		return new URL(url).origin;
-	} catch {
-		return null;
-	}
+	if (url === undefined || !URL.canParse(url)) return null;
+	return new URL(url).origin;
 }
 
 /** The monorepo root: the nearest ancestor of `fromUrl` holding `pnpm-workspace.yaml`. */
@@ -72,8 +68,9 @@ async function waitForHealth(origin: string, deadline: number): Promise<void> {
 		try {
 			const response = await fetch(`${origin}/__health`);
 			if (response.ok) return;
-		} catch {
-			// not accepting connections yet
+		} catch (error) {
+			// Not accepting connections yet: undici's fetch rejects with a TypeError ("fetch failed"). Anything else is real.
+			if (!(error instanceof TypeError)) throw error;
 		}
 		if (Date.now() > deadline) throw new MockBankStartError(`${origin}/__health did not answer in time`);
 		await new Promise((resolve) => setTimeout(resolve, 50));

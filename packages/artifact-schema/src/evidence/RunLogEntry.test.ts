@@ -166,6 +166,23 @@ describe('RunLogEntrySchema', () => {
 		expect(result.success).toBe(false);
 	});
 
+	it('accepts optional model-response metadata on a decision and rejects free text in it', () => {
+		const modelResponse = {
+			responseId: 'msg_01XFDUDYJgAACzvnptvVoYEL',
+			model: 'claude-sonnet-5-5',
+			stopReason: 'tool_use',
+			usage: { inputTokens: 12345, outputTokens: 30, cacheReadInputTokens: 11000, cacheCreationInputTokens: 0 },
+			latencyMs: 2345,
+		};
+		expect(RunLogEntrySchema.safeParse({ ...entries[3], modelResponse }).success).toBe(true);
+		expect(RunLogEntrySchema.safeParse({ ...entries[3], modelResponse: { ...modelResponse, model: 'a b' } }).success).toBe(
+			false,
+		);
+		expect(
+			RunLogEntrySchema.safeParse({ ...entries[3], modelResponse: { ...modelResponse, extra: 1 } }).success,
+		).toBe(false);
+	});
+
 	it('accepts decision entries only on discovery runs', () => {
 		const result = RunLogEntrySchema.safeParse({ ...entries[3], runId: REPLAY, actor: 'replay' });
 		expect(result.success).toBe(false);

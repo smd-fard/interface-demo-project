@@ -1,12 +1,12 @@
 {
-	"runId": "replay-20260930T032226-293a",
+	"runId": "replay-20260930T191953-0ab5",
 	"kind": "replay",
-	"startedAt": "2026-09-30T03:22:26.829Z",
-	"endedAt": "2026-09-30T03:22:29.181Z",
+	"startedAt": "2026-09-30T19:19:53.390Z",
+	"endedAt": "2026-09-30T19:19:56.385Z",
 	"artifact": {
 		"id": "member-lookup",
-		"version": "1.0.1",
-		"contentHash": "sha256:d5f22180d5bf91d0088a622db255cb884902a4d461be1848f2dd2652100ea90d"
+		"version": "1.0.0",
+		"contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
 	},
 	"resultKind": "success",
 	"evidence": [
@@ -29,28 +29,28 @@
 		{
 			"id": "json-0001",
 			"kind": "json",
-			"path": "interventions/ir-20260930T032228-3f82.json",
-			"sha256": "bf603660c3a73c0f98d601e9f39e0c8b368b28a7b6ac74311687cb06de5a8197",
+			"path": "interventions/ir-20260930T191955-aea9.json",
+			"sha256": "a6d608839a05cf4ec998ba8212a92b1c2846e765ff96348a5041ba56d6dfb861",
 			"redacted": true,
 			"localOnly": false
 		},
 		{
 			"id": "json-0002",
 			"kind": "json",
-			"path": "interventions/ir-20260930T032228-3f82-v2.json",
-			"sha256": "547af0e5715e5fc9a7518a78c2e14ab2c1e4165bb4d6cbd07d60d599bafc0e53",
+			"path": "interventions/ir-20260930T191955-aea9-v2.json",
+			"sha256": "f705a59843a2d173b796e4ee68b8c5d670469f4d95936bdb7302a40156d70843",
 			"redacted": true,
 			"localOnly": false
 		},
 		{
 			"id": "json-0003",
 			"kind": "json",
-			"path": "interventions/ir-20260930T032228-3f82-v3.json",
-			"sha256": "c1f6b0b871be8ce49b5b0d9fb8467f05ee284eef66961d5c99ad77976a2b43c1",
+			"path": "interventions/ir-20260930T191955-aea9-v3.json",
+			"sha256": "7f52fbbf6772e8ba3842ccdd8048c31e0330707664eed3ed8752ebcfbc47e437",
 			"redacted": true,
 			"localOnly": false
 		}
 	],
 	"logPath": "run.jsonl",
-	"redactionRulesVersion": "1.0.0"
+	"redactionRulesVersion": "1.2.0"
 }

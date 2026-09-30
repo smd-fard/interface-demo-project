@@ -13,8 +13,8 @@ describe('defaultRedactionRules', () => {
 		);
 	});
 
-	it('ships the money-amount rule (full mask) since rules version 1.1.0', () => {
-		expect(REDACTION_RULES_VERSION).toBe('1.1.0');
+	it('ships the money-amount rule (full mask) since rules version 1.1.0; 1.2.0 exempts hex digests', () => {
+		expect(REDACTION_RULES_VERSION).toBe('1.2.0');
 		expect(DEFAULT_REDACTION_CONFIG.patterns.map((pattern) => pattern.name)).toEqual([
 			'ssn',
 			'account-number',

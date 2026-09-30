@@ -165,6 +165,47 @@
 					"propertyNames": { "type": "string", "maxLength": 64 },
 					"additionalProperties": {},
 					"description": "The tool input as the model sent it, placeholderized and redacted."
+				},
+				"modelResponse": {
+					"description": "The model response of this turn (since the review-fixes change; absent in older logs).",
+					"type": "object",
+					"properties": {
+						"responseId": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9_-]{1,128}$",
+							"description": "The provider response id, e.g. \"msg_01…\"; \"scripted-<n>\" for the scripted model."
+						},
+						"model": {
+							"type": "string",
+							"pattern": "^[A-Za-z0-9._:@/-]{1,128}$",
+							"description": "The model the provider says answered (may differ from the requested alias)."
+						},
+						"stopReason": {
+							"type": "string",
+							"pattern": "^[a-z_]{1,32}$",
+							"description": "The provider stop reason, e.g. \"tool_use\", \"end_turn\", \"max_tokens\"."
+						},
+						"usage": {
+							"type": "object",
+							"properties": {
+								"inputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+								"outputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+								"cacheReadInputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+								"cacheCreationInputTokens": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 }
+							},
+							"required": ["inputTokens", "outputTokens", "cacheReadInputTokens", "cacheCreationInputTokens"],
+							"additionalProperties": false,
+							"description": "Token usage of the call (zeros for the scripted model)."
+						},
+						"latencyMs": {
+							"type": "integer",
+							"minimum": 0,
+							"maximum": 9007199254740991,
+							"description": "Wall time of the model call, in milliseconds (retries included)."
+						}
+					},
+					"required": ["responseId", "model", "stopReason", "usage", "latencyMs"],
+					"additionalProperties": false
 				}
 			},
 			"required": ["seq", "at", "runId", "actor", "kind", "reason", "tool", "input"],

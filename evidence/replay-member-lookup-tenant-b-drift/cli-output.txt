@@ -1,15 +1,15 @@
 {
   "kind": "success",
-  "runId": "replay-20260930T034049-9593",
+  "runId": "replay-20260930T191853-0f54",
   "artifact": {
     "id": "member-lookup",
     "version": "1.0.0",
-    "contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+    "contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
   },
   "outputs": {
     "savingsBalance": "[REDACTED]"
   },
-  "durationMs": 1407,
+  "durationMs": 1907,
   "drift": [
     {
       "stepId": "s05-fill-member",
@@ -24,5 +24,6 @@
   ],
   "recoveries": 0
 }
-success: member-lookup@1.0.0 in 1.4 s, 0 recoveries, 2 drifted locator(s); outputs: savingsBalance=[REDACTED]
-run dir: /private/tmp/claude-501/-Users-mos-Workspaces-interface-demo-project/c1f8d9fb-1c07-4cc6-8b66-fc0647e23a3d/scratchpad/replays2/tenantb/replay-20260930T034049-9593
+success: member-lookup@1.0.0 in 1.9 s, 0 recoveries, 2 drifted locator(s); outputs: savingsBalance=[REDACTED]
+run dir: .runs/evidence/replay-member-lookup-tenant-b-drift/runs/replay-20260930T191853-0f54
+exit: 0

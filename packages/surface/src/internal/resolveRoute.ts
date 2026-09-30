@@ -7,12 +7,9 @@ import { blockedOriginOf } from '../playwright/networkGuard.js';
  */
 export function resolveRoute(origin: string, route: string): string {
 	const base = new URL(origin);
-	let url: URL;
-	try {
-		url = new URL(route, base);
-	} catch {
-		throw new NavigationBlockedError('(invalid url)');
-	}
+	// An unparseable route is refused like an off-origin one (no exception to narrow: `canParse` answers).
+	if (!URL.canParse(route, base)) throw new NavigationBlockedError('(invalid url)');
+	const url = new URL(route, base);
 	if (url.origin !== base.origin) throw new NavigationBlockedError(blockedOriginOf(url.href));
 	return url.href;
 }

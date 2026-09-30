@@ -5,7 +5,7 @@ secrets live in this directory: credentials are referenced by name and resolved 
 
 | File | Contract | Controls |
 | --- | --- | --- |
-| `policy.json` | `PolicyConfig` (`@idp/artifact-schema`) | The allowlist (origins, routes, action types), irreversible-action rules (control-name patterns and routes that raise a step to `irreversible`, which then needs human approval), redaction patterns (`ssn`, `account-number`, `member-number`, `money-amount`; kept in step with `DEFAULT_REDACTION_CONFIG`, rules version 1.1.0) and synthetic name terms, and the approval expiry. |
+| `policy.json` | `PolicyConfig` (`@idp/artifact-schema`) | The allowlist (origins, routes, action types), irreversible-action rules (control-name patterns and routes that raise a step to `irreversible`, which then needs human approval), redaction patterns (`ssn`, `account-number`, `member-number`, `money-amount`; kept in step with `DEFAULT_REDACTION_CONFIG`, rules version 1.2.0) and synthetic name terms, and the approval expiry. |
 | `apps/mock-bank.profile.json` | `AppProfile` | Tenant A of the CoreOne mock app: sign-on route, credential reference `mockbank-operator`, the default runtime-condition signatures (business outcomes, recoverables, failures), and the known dialogs replay may handle. |
 | `apps/mock-bank.tenant-b.profile.json` | `AppProfile` | Tenant B (CoreOne 7.2): the same vendor app with relabelled fields. This is the R7.2 per-tenant specialisation, done at the profile level. |
 

@@ -19,4 +19,10 @@ export class StepRecovery {
 	/** Retries of this step after a failed load (≤ the retry budget). */
 	retries = 0;
 	pending: PendingRecovery | null = null;
+	/**
+	 * Whether the step's checkpoint already held before the step was first attempted (`null`: not recorded — no
+	 * checkpoint, or no condition rules). A retry's reload counts the step as done by its checkpoint only when it
+	 * did not hold before (or the step is read-only), so a step whose checkpoint proves nothing is re-executed.
+	 */
+	checkpointHeldBefore: boolean | null = null;
 }

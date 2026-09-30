@@ -15,6 +15,9 @@ import { launchBrowserFixture, type BrowserFixture } from '../../src/testing/ind
 const PAGE = `<!doctype html><html><body>
 <form id="f" onsubmit="window.__submits = (window.__submits || 0) + 1; return false;">
   <input id="field" name="q" value="">
+  <select id="product" onchange="window.__changes = (window.__changes || 0) + 1;">
+    <option value="s">Savings</option><option value="v">Vacation Savings</option><option value="h">Holiday Club</option>
+  </select>
   <button id="go" type="submit">Go</button>
 </form>
 </body></html>`;
@@ -24,7 +27,9 @@ const config: CaptureConfig = {
 	stateKey: '__idpCapture_test',
 	secret: 'secret-one',
 	previousSecret: null,
-	enabled: true,
+	mode: 'record',
+	automation: false,
+	blockMessage: 'Automation is in control',
 	tokenAttribute: 'data-idp-rec',
 };
 
@@ -44,6 +49,11 @@ describe('surface: capture script pass (one event, secret-checked)', () => {
 	let reports: DomEventDescriptor[];
 
 	const submits = () => page.evaluate(() => (window as unknown as { __submits?: number }).__submits ?? 0);
+	const changes = () => page.evaluate(() => (window as unknown as { __changes?: number }).__changes ?? 0);
+	const valueOf = (selector: string) => page.locator(selector).inputValue();
+	const configure = (overrides: Partial<CaptureConfig>) =>
+		page.evaluate(installCaptureScript, { ...config, ...overrides });
+	const banner = () => page.locator('#idp-refusal-banner').count();
 	const command = (cmd: CaptureCommand, secret = config.secret) =>
 		page.evaluate(commandCaptureScript, { stateKey: config.stateKey, secret, command: cmd });
 	const pass = (selector: string, kind: PassKind, secret = config.secret) =>
@@ -152,5 +162,104 @@ describe('surface: capture script pass (one event, secret-checked)', () => {
 		await page.evaluate(installCaptureScript, { ...config, secret: 'secret-two', previousSecret: config.secret });
 		expect(await command({ op: 'clear' }, config.secret)).toBe(false);
 		expect(await command({ op: 'clear' }, 'secret-two')).toBe(true);
+	});
+
+	it("record: a person's select is stopped before the page's onchange and reported; settle(refused) reverts it", async () => {
+		await page.locator('#product').focus();
+		await page.keyboard.press('h');
+		await until(() => reports.some((report) => report.event === 'change'), 'the reported select');
+		expect(reports.find((report) => report.event === 'change')).toMatchObject({
+			tag: 'select',
+			optionLabel: 'Holiday Club',
+		});
+		expect(await changes()).toBe(0);
+		expect(await valueOf('#product')).toBe('h');
+		const settled = await page.locator('#product').evaluate(passCaptureScript, {
+			stateKey: config.stateKey,
+			secret: config.secret,
+			command: { op: 'settle' as const, accepted: false },
+		});
+		expect(settled).toBe(true);
+		expect(await valueOf('#product')).toBe('s');
+		expect(await changes()).toBe(0);
+	});
+
+	it("record: the guard's re-executed select (passed change) reaches the page's onchange exactly once", async () => {
+		await page.locator('#product').focus();
+		await page.keyboard.press('v');
+		await until(() => reports.some((report) => report.event === 'change'), 'the reported select');
+		expect(await pass('#product', 'change')).toBe(true);
+		await page.locator('#product').selectOption('v');
+		await settle();
+		expect(await changes()).toBe(1);
+	});
+
+	it('record: settle(refused) puts a typed field back to its value on focus', async () => {
+		await page.locator('#field').fill('before');
+		await page.locator('#go').focus();
+		await page.locator('#field').focus();
+		await page.keyboard.type('-typed');
+		await page.keyboard.press('Tab');
+		await until(() => reports.some((report) => report.event === 'change'), 'the reported fill');
+		const settled = await page.locator('#field').evaluate(passCaptureScript, {
+			stateKey: config.stateKey,
+			secret: config.secret,
+			command: { op: 'settle' as const, accepted: false },
+		});
+		expect(settled).toBe(true);
+		expect(await valueOf('#field')).toBe('before');
+	});
+
+	it('block: every trusted gesture (click, typing, select, Enter) is blocked with a banner, and nothing is reported', async () => {
+		await configure({ mode: 'block', secret: 'secret-two', previousSecret: config.secret });
+		await page.mouse.click(1, 1); // focus the page, not a control
+		const box = await page.locator('#go').boundingBox();
+		if (box === null) throw new Error('the button is not visible');
+		await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+		const field = await page.locator('#field').boundingBox();
+		if (field === null) throw new Error('the field is not visible');
+		await page.mouse.click(field.x + 5, field.y + 5);
+		await page.keyboard.type('999');
+		await page.keyboard.press('Enter');
+		const select = await page.locator('#product').boundingBox();
+		if (select === null) throw new Error('the select is not visible');
+		await page.mouse.click(select.x + 5, select.y + 5);
+		await page.keyboard.press('h');
+		await settle();
+		expect(await submits()).toBe(0);
+		expect(await changes()).toBe(0);
+		expect(await valueOf('#field')).toBe('');
+		expect(await valueOf('#product')).toBe('s');
+		expect(await banner()).toBe(1);
+		expect(await page.locator('#idp-refusal-banner').textContent()).toBe('Automation is in control');
+		expect(reports).toHaveLength(0);
+	});
+
+	it('block: page script (untrusted events) is not blocked; with automation on, trusted input goes through', async () => {
+		await configure({ mode: 'block', secret: 'secret-two', previousSecret: config.secret });
+		await page.evaluate(() => (document.getElementById('f') as HTMLFormElement).requestSubmit());
+		expect(await submits()).toBe(1);
+		await configure({ mode: 'block', secret: 'secret-two', automation: true });
+		await page.locator('#field').fill('4242');
+		await page.locator('#product').selectOption('v');
+		await page.locator('#go').click();
+		await settle();
+		expect(await valueOf('#field')).toBe('4242');
+		expect(await changes()).toBe(1);
+		expect(await submits()).toBe(2);
+		expect(await banner()).toBe(0);
+		await configure({ mode: 'block', secret: 'secret-two', automation: false });
+		await page.locator('#go').click();
+		await settle();
+		expect(await submits()).toBe(2);
+		expect(reports).toHaveLength(0);
+	});
+
+	it('block → off: the script goes inert', async () => {
+		await configure({ mode: 'block', secret: 'secret-two', previousSecret: config.secret });
+		await configure({ mode: 'off', secret: 'secret-two' });
+		await page.locator('#go').click();
+		await settle();
+		expect(await submits()).toBe(1);
 	});
 });

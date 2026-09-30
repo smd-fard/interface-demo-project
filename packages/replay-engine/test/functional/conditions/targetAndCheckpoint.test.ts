@@ -40,6 +40,18 @@ describe('runtime conditions target_unresolved and checkpoint_failed (failure, s
 		expectNoSecrets(run);
 	});
 
+	it('late_render: a Search button rendered 1.5 s after the page is waited for (bounded), not target_unresolved', async () => {
+		await bank.setFault('late_render', { mode: 'once', delayMs: 1_500 });
+		const run = await runReplay({ bank, root, artifact: fixture, params: { memberId: '12345' }, profile });
+		expect(RunResultSchema.parse(run.result)).toMatchObject({ kind: 'success', drift: [] });
+		expect(
+			run.entries.find((entry) => entry.kind === 'locator_resolved' && entry.stepId === 's06-click-search'),
+		).toMatchObject({
+			rungIndex: 0,
+		});
+		expectNoSecrets(run);
+	});
+
 	it('a checkpoint that does not hold (a fixture copy expecting "Member Enquiry"): checkpoint_failed with expected vs observed', async () => {
 		const artifact = await withStep(fixture, 's06-click-search', (step) =>
 			step.kind === 'click'

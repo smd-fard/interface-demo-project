@@ -5,11 +5,19 @@ import { z } from 'zod';
  * JSON Schema for the model, and `toolToAction` validates the model's input against them.
  */
 
+/** The shortest accepted `reason`: a bare label such as "Sign on" or "Password" is not a justification. */
+export const MIN_REASON_LENGTH = 15;
+
 const reason = z
 	.string()
-	.min(1)
+	.trim()
+	.min(MIN_REASON_LENGTH, {
+		message: `too short: give a one-sentence justification (at least ${MIN_REASON_LENGTH} characters) that references what you observed on the screen, e.g. "The login form's Password field is empty; the password is required to sign on." Call the tool again with a better reason.`,
+	})
 	.max(500)
-	.describe('Why you take this action, in one sentence. Recorded as the decision for this step.');
+	.describe(
+		'A one-sentence justification that references what you observed on the current screen and why this step moves toward the goal, e.g. "The login form\'s Password field is empty; the password is required to sign on." Not a bare label such as "Password". Recorded as the decision for this step.',
+	);
 
 const ref = z
 	.string()
@@ -88,7 +96,11 @@ export const TOOL_INPUT_SCHEMAS = {
 	}),
 	declare_output: z.strictObject({
 		name: outputName,
-		type: z.enum(['string', 'integer', 'decimal', 'boolean', 'date']).describe('The value type of the output.'),
+		// No `boolean`: an extract step has no boolean parse (text | decimal | integer), so a boolean output could
+		// never validate at replay. Declare a yes/no value as a string.
+		type: z
+			.enum(['string', 'integer', 'decimal', 'date'])
+			.describe('The value type of the output (a yes/no value is a string: extract reads text).'),
 		scale: z.int().min(0).max(10).optional().describe('For decimal: the number of fractional digits (default 2).'),
 		description: z.string().min(1).max(500).describe('What the value means, for a calling agent and a reviewer.'),
 		sensitive: z.boolean().describe('True when the value is personal or financial data that must be redacted.'),

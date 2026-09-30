@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { findRepoRoot } from './findRepoRoot.js';
 import { invocationDir } from './invocationDir.js';
 import { resolveRunsRoot } from './resolveRunsRoot.js';
+import { displayPath } from '../cli/CliContext.js';
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '../../../..');
 
@@ -27,5 +28,15 @@ describe('resolveRunsRoot', () => {
 		expect(resolveRunsRoot(context, { IDP_RUNS_ROOT: '/abs/runs' }, undefined)).toBe('/abs/runs');
 		expect(resolveRunsRoot(context, { IDP_RUNS_ROOT: 'rel' }, undefined)).toBe('/here/rel');
 		expect(resolveRunsRoot(context, {}, undefined)).toBe('/repo/.runs');
+	});
+});
+
+describe('displayPath', () => {
+	const context = { repoRoot: '/repo', invocationDir: '/repo' };
+	it('prints paths under the invocation dir relative to it, others absolute', () => {
+		expect(displayPath(context, '/repo/.runs/replay-1')).toBe('.runs/replay-1');
+		expect(displayPath(context, '/repo')).toBe('.');
+		expect(displayPath(context, '/tmp/runs/replay-1')).toBe('/tmp/runs/replay-1');
+		expect(displayPath(context, '/repository/x')).toBe('/repository/x');
 	});
 });

@@ -1,16 +1,15 @@
 {
 	"kind": "success",
-	"runId": "replay-20260930T032226-293a",
+	"runId": "replay-20260930T191953-0ab5",
 	"artifact": {
 		"id": "member-lookup",
-		"version": "1.0.1",
-		"contentHash": "sha256:d5f22180d5bf91d0088a622db255cb884902a4d461be1848f2dd2652100ea90d"
+		"version": "1.0.0",
+		"contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
 	},
 	"outputs": {
-		"savingsBalance": "[REDACTED]",
-		"memberName": "[REDACTED]"
+		"savingsBalance": "[REDACTED]"
 	},
-	"durationMs": 2225,
+	"durationMs": 2519,
 	"drift": [],
 	"recoveries": 0
 }

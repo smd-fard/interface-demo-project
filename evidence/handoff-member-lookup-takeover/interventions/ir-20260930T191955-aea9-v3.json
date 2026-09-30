@@ -1,11 +1,11 @@
 {
-	"id": "ir-20260930T034021-b633",
-	"runId": "replay-20260930T034020-b613",
+	"id": "ir-20260930T191955-aea9",
+	"runId": "replay-20260930T191953-0ab5",
 	"runKind": "replay",
 	"kind": "takeover",
 	"reason": {
 		"code": "app_error",
-		"text": "Expected s04-click-sign-on to complete without a app_error condition; observed app_error (artifact): matched \"Server Error\""
+		"text": "Expected s06-click-search to complete with no app_error condition; observed app_error (artifact): matched \"Server Error\""
 	},
 	"subject": {
 		"kind": "capability",
@@ -13,9 +13,9 @@
 		"version": "1.0.0"
 	},
 	"currentStep": {
-		"index": 3,
-		"id": "s04-click-sign-on",
-		"description": "Click button \"Sign On\".",
+		"index": 5,
+		"id": "s06-click-search",
+		"description": "Click button \"Search\".",
 		"risk": "reversible"
 	},
 	"state": {
@@ -25,7 +25,7 @@
 			"id": "screenshot-0001",
 			"kind": "screenshot",
 			"path": "screenshots/0001-intervention.png",
-			"sha256": "878d032bb4407d2ebd7fbe127045d252e517f7d4c743f9cd52cb42c580068b73",
+			"sha256": "76045a2ecb0c09e87a8f7e09f65cd1ea4dc39612029a87bb23b0cc07940f205a",
 			"redacted": true,
 			"localOnly": false
 		},
@@ -33,7 +33,7 @@
 			"id": "a11y-snapshot-0001",
 			"kind": "a11y_snapshot",
 			"path": "snapshots/0001.json",
-			"sha256": "47ecbfb07234818abcb20b43b514c9dc87c7136ab77b5ae8d0f334d1ffdffcf6",
+			"sha256": "4bd4f1a3450b5d5da3c34522c604596bea30bfb2f6aac9bd865c6f4620fb8362",
 			"redacted": true,
 			"localOnly": false
 		}
@@ -42,6 +42,11 @@
 		"resumed",
 		"aborted"
 	],
-	"status": "open",
-	"createdAt": "2026-09-30T03:40:22.017Z"
+	"status": "resolved",
+	"resolution": {
+		"decision": "resumed",
+		"by": "operator:ops-1",
+		"at": "2026-09-30T19:19:56.279Z"
+	},
+	"createdAt": "2026-09-30T19:19:55.582Z"
 }

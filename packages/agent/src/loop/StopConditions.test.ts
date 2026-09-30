@@ -32,8 +32,32 @@ describe('StopConditions', () => {
 		expect(stops.beforeTurn()).toBe('timeout');
 	});
 
-	it('detects a dead end: the same digest three times with no progress', () => {
+	// Expectation changed (review-fixes FR8): two no-op actions used to stop the run (before + after digests
+	// filled the 3-entry window). Now it takes three consecutive no-progress turns.
+	it('detects a dead end: three consecutive no-op actions', () => {
 		const stops = new StopConditions({ clock: new FakeClock() });
+		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
+		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
+		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBe('dead_end');
+	});
+
+	it('two no-op actions (e.g. Tab, Tab) are not a dead end', () => {
+		const stops = new StopConditions({ clock: new FakeClock() });
+		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
+		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
+		expect(stops.recordAction({ before: 'A', after: 'B', progress: false })).toBeNull();
+		expect(stops.recordAction({ before: 'B', after: 'B', progress: false })).toBeNull();
+		expect(stops.recordAction({ before: 'B', after: 'B', progress: false })).toBeNull();
+	});
+
+	it('value-only fills and selects on an unchanged screen are not no-progress turns', () => {
+		const stops = new StopConditions({ clock: new FakeClock() });
+		for (let index = 0; index < 5; index += 1) {
+			expect(stops.recordAction({ before: 'A', after: 'A', progress: false, valueOnly: true })).toBeNull();
+		}
+		// They do not reset the count either: no-op clicks between fills still add up.
+		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
+		expect(stops.recordAction({ before: 'A', after: 'A', progress: false, valueOnly: true })).toBeNull();
 		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
 		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBe('dead_end');
 	});
@@ -41,9 +65,12 @@ describe('StopConditions', () => {
 	it('progress (an extract, a declared output) resets the dead-end window', () => {
 		const stops = new StopConditions({ clock: new FakeClock() });
 		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
+		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
 		expect(stops.recordAction({ before: 'A', after: 'A', progress: true })).toBeNull();
 		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
+		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
 		stops.recordProgress();
+		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
 		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
 	});
 
@@ -85,9 +112,11 @@ describe('StopConditions', () => {
 	it('a handoff clears the dead-end window and the denial count', () => {
 		const stops = new StopConditions({ clock: new FakeClock() });
 		stops.recordAction({ before: 'A', after: 'A', progress: false });
+		stops.recordAction({ before: 'A', after: 'A', progress: false });
 		stops.recordDenial();
 		stops.recordDenial();
 		stops.resetAfterHandoff();
+		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
 		expect(stops.recordAction({ before: 'A', after: 'A', progress: false })).toBeNull();
 		expect(stops.recordDenial()).toBeNull();
 	});

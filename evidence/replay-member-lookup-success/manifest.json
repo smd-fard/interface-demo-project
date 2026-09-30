@@ -1,15 +1,15 @@
 {
-	"runId": "replay-20260930T033947-211a",
+	"runId": "replay-20260930T191821-eefa",
 	"kind": "replay",
-	"startedAt": "2026-09-30T03:39:47.591Z",
-	"endedAt": "2026-09-30T03:39:49.099Z",
+	"startedAt": "2026-09-30T19:18:21.006Z",
+	"endedAt": "2026-09-30T19:18:22.577Z",
 	"artifact": {
 		"id": "member-lookup",
 		"version": "1.0.0",
-		"contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+		"contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
 	},
 	"resultKind": "success",
 	"evidence": [],
 	"logPath": "run.jsonl",
-	"redactionRulesVersion": "1.1.0"
+	"redactionRulesVersion": "1.2.0"
 }

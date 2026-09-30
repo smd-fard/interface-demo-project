@@ -18,8 +18,15 @@ Playwright and the only place a raw browser action (e.g. `page.click`) may appea
   `observe` merges each frame's aria snapshot into one tree (`snapshot/a11ySnapshot.ts`, refs `e<N>` valid
   until the next observe) plus per-frame text/titles, pending dialog and last navigation.
 - **Locator ladder** — `LadderResolver` walks a `TargetRef`'s rungs (`role` → `label` → `text` →
-  `structural`) inside its frame scope; the first rung matching exactly one element wins; one re-resolution
-  after a pause, then `TargetNotResolvedError` with per-rung counts.
+  `structural`) inside its frame scope; the first rung matching exactly one element wins. It polls (all rungs in
+  order each pass, backoff 100 → 250 ms) up to a bound — 5 s for `describe`/`resolve`, min(action bound, 5 s)
+  for an act, a single pass inside `check` (which polls itself), 100 ms by default — then throws
+  `TargetNotResolvedError` with the last pass's per-rung counts.
+- **Checkpoints** — `check` polls `evaluateCheckpoint` every 100 ms up to its bound. A frame that cannot be read
+  (gone mid-read, or a frame scope that does not resolve) is *unreadable*: never a pass for `text_absent` /
+  `element_absent`; at the bound the result is `not_held` with `frame unreadable: <reason>`.
+- **Effective risk** — the guard returns the verdict's classified risk in `ActOutcome.risk` (replay's recovery
+  guard uses it).
 - **Action executors** — `executeAction` dispatches exhaustively (a `never` check) to
   `src/actions/executors/<kind>.ts` (**define-action touch point 3**). Every kind but `dismiss_dialog` is
   refused with `DialogPendingError` while a native dialog is open. After a gesture, `waitForFramesLoaded`
@@ -47,8 +54,14 @@ Playwright and the only place a raw browser action (e.g. `page.click`) may appea
 
 ## Human-action recorder (mediated control, R6.2)
 
-- A capture script (`addInitScript` + evaluate in open frames) blocks click / Enter / submit in the capture
-  phase and reports them (plus `change`, not blocked) through an exposed binding with a random name.
+- A capture script (`addInitScript` + evaluate in open frames) has three modes: **off** (unattended; inert),
+  **block** (attended, lease not `HUMAN`: every person's click, pointer, key, input, change, paste and drop is
+  blocked and a banner says automation is in control; automation acts pass one at a time through
+  `automationAct()`), and **record** (lease `HUMAN`).
+- In record mode it blocks click / Enter / submit in the capture phase and reports them through an exposed
+  binding with a random name. A `select` change is held before the page's `onchange` runs and re-executed
+  once after policy allows it; a refused fill or select is reverted to the value it had on focus (or when
+  last accepted).
 - Each gesture is fingerprinted, mapped (`mapDomEventToStep`), given a ladder (`targetFromFingerprint`,
   checked to resolve the same element) and re-executed through `PolicyGuardedSurface.actWith` (actor `human`).
 - **Single-use passes, secret-keyed:** only after policy allowed it, the recorder sets a pass through the

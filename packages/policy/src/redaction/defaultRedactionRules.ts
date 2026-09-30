@@ -1,7 +1,7 @@
 import type { RedactionConfig } from './RedactionConfig.js';
 
 /** Version of the default redaction rules. Bump it whenever a default pattern, mask or term changes. */
-export const REDACTION_RULES_VERSION = '1.1.0';
+export const REDACTION_RULES_VERSION = '1.2.0';
 
 /**
  * The default redaction rules (the same rules `config/policy.json` ships). The number patterns refuse to match
@@ -13,6 +13,11 @@ export const REDACTION_RULES_VERSION = '1.1.0';
  * are regulated financial data and the model never needs their digits (`extract` reads them off the surface).
  * It rejects a word character, "." or "," before, and a word character or a "."/"," followed by a digit after,
  * so versions (`7.4`, `1.0.1`, `1.10.12`), IPs and ports, integers, ISO timestamps, `1.25s` and hex never match.
+ *
+ * 1.2.0 changes how the rules apply, not the rules themselves (`createRedactor`): hex digests (`sha256:<64 hex>`
+ * and standalone runs of 32+ hex characters) and URL authorities (`http://127.0.0.1:61012`) are exempt from
+ * patterns and terms, and a name-like known value
+ * matches case-insensitively at word boundaries.
  */
 export const DEFAULT_REDACTION_CONFIG: RedactionConfig = Object.freeze({
 	patterns: Object.freeze([

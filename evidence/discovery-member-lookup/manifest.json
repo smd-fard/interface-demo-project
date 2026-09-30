@@ -1,12 +1,12 @@
 {
-	"runId": "discovery-20260930T033842-7774",
+	"runId": "discovery-20260930T191747-2ede",
 	"kind": "discovery",
-	"startedAt": "2026-09-30T03:38:42.487Z",
-	"endedAt": "2026-09-30T03:38:58.895Z",
+	"startedAt": "2026-09-30T19:17:47.896Z",
+	"endedAt": "2026-09-30T19:18:04.982Z",
 	"artifact": {
 		"id": "member-lookup",
 		"version": "1.0.0",
-		"contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+		"contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
 	},
 	"resultKind": "success",
 	"evidence": [
@@ -14,7 +14,7 @@
 			"id": "json-0001",
 			"kind": "json",
 			"path": "prompts/turn-01.json",
-			"sha256": "1318788d755426490f12ecf594b66a5847b2d4ea4129e212f4bfc4af651e5fbd",
+			"sha256": "5cd8d40d53a53caba1493233f97871d2e19dbb34c30d9b069df5d9437aca1840",
 			"redacted": true,
 			"localOnly": false
 		},
@@ -22,7 +22,7 @@
 			"id": "json-0002",
 			"kind": "json",
 			"path": "prompts/turn-02.json",
-			"sha256": "e70574df8fc885fe98a9647da8d87d04768a7fdbb27328aa226212dea2ef4a00",
+			"sha256": "c7517648d11b6f1dd9991ac9fdbfdf93d38213e4267d649efe5660039fbeb1ed",
 			"redacted": true,
 			"localOnly": false
 		},
@@ -30,7 +30,7 @@
 			"id": "json-0003",
 			"kind": "json",
 			"path": "prompts/turn-03.json",
-			"sha256": "1e59da83dad306b60b69fa780b93114a136b8238d19bab38877183af0a461383",
+			"sha256": "a3157f8091073ecafaac61dda744c222dbef4db2eeaa557fe837bab3fe8a744c",
 			"redacted": true,
 			"localOnly": false
 		},
@@ -38,7 +38,7 @@
 			"id": "json-0004",
 			"kind": "json",
 			"path": "prompts/turn-04.json",
-			"sha256": "adc24b57108f8723764ad4fb4bd801118b97d29b6aba2675ec57886c002bda6b",
+			"sha256": "a14535f65c27c193d980572a6ef0cbd035a0027c04c9546f6a55eaf8927b7a28",
 			"redacted": true,
 			"localOnly": false
 		},
@@ -46,7 +46,7 @@
 			"id": "json-0005",
 			"kind": "json",
 			"path": "prompts/turn-05.json",
-			"sha256": "94582978de027d9f50aac656df9d7c863f882aac342fd5e5d12e234b7fa2324e",
+			"sha256": "6b9d8dbb065c17f4f7e8614f108c004478cd1ed7ec960c55cd340d30d7a69b11",
 			"redacted": true,
 			"localOnly": false
 		},
@@ -54,7 +54,7 @@
 			"id": "json-0006",
 			"kind": "json",
 			"path": "prompts/turn-06.json",
-			"sha256": "f346c7601ec9d56094f71b2147237be5ccc46c02b60d795a7923344f94e62819",
+			"sha256": "7f5fb58a7d8ba98944dbaf8cfc860afc7390c863ab183d5e518d7f9405b185e4",
 			"redacted": true,
 			"localOnly": false
 		},
@@ -62,7 +62,7 @@
 			"id": "json-0007",
 			"kind": "json",
 			"path": "prompts/turn-07.json",
-			"sha256": "7959e6a0cb2c86312a1d28afc92061798070b3744aefe0567557624f92dba9d3",
+			"sha256": "fc7a4834006e773ef7d54a276f137467e9f09dada79c0f73c2c26ef8bcaed3e8",
 			"redacted": true,
 			"localOnly": false
 		},
@@ -70,11 +70,11 @@
 			"id": "json-0008",
 			"kind": "json",
 			"path": "prompts/turn-08.json",
-			"sha256": "c76cf54443661a8fc8ffcd38292d82ae88c53938d457bdc4a62d112af2c5f4bc",
+			"sha256": "56f5672b1e21c8d43ba221a68f97d45b155f9cd7743b4c190fccbe5de74c7169",
 			"redacted": true,
 			"localOnly": false
 		}
 	],
 	"logPath": "run.jsonl",
-	"redactionRulesVersion": "1.1.0"
+	"redactionRulesVersion": "1.2.0"
 }

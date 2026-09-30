@@ -28,6 +28,16 @@ the localhost control API (`ControlServer` / `ControlClient`) and `openLiveSessi
   the artifact-schema contracts.
 - `requestApproval` reacquires the lease itself on approve (nothing changed on screen); after `escalate`
   resumes, the caller re-verifies its checkpoint and then calls `lease.reacquire()`.
+- **Locked window (FR1).** An attended session locks the browser at open (`HumanActionRecorder.lock`): outside
+  `HUMAN` the capture script blocks every trusted gesture (pointer, key, input, change, paste, drop) with a
+  banner, and records nothing. The automation's input passes only through `AutomationGateSurface`, the
+  innermost decorator of the automation surface (lease → guard → gate → web), which opens the page for exactly
+  one policy-allowed act (`recorder.automationAct`). Never give the automation a surface without the gate in an
+  attended session, and never open the gate for a `human` act.
+- **Bounded waits (FR3).** An approval waits `timeoutMs` for a decision; a takeover waits `timeoutMs` for the
+  claim, then `takeoverTimeoutMs` for the operator's resume/abort. A request whose bound passed is expired:
+  unlisted and never claimable/approvable again (409). The contract has no `expired` status, so the persisted
+  document keeps its last status; expiry lives in memory.
 
 ## Owns
 
@@ -64,12 +74,14 @@ Codes most relevant here:
 ```
 src/
   index.ts           barrel
-  lease/             ControlLease (state machine), LeasedSurface (FR20 check on act)
+  lease/             ControlLease (state machine), LeasedSurface (FR20 check on act),
+                     AutomationGateSurface (opens the locked window for one automation act)
   intervention/      InterventionService, redactInterventionRequest
   control/           ControlServer (node:http, 127.0.0.1), ControlClient (fetch), ControlTarget, LeaseView
   LiveSession.ts     openLiveSession: browser → guard → lease, run dir/log/evidence/manifest, recorder, control API
   errors/            typed errors with stable codes
-test/functional/     handoff.test.ts: mock-bank + real headless browser (takeover, approval, unattended)
+test/functional/     handoff.test.ts: mock-bank + real headless browser (takeover, approval, locked window,
+                     takeover bounds, unattended)
 tsconfig.build.json  emits src → dist (excludes *.test.ts and *.test-helper.ts)
 vitest.config.ts     unit: src/**/*.test.ts (the control server binds 127.0.0.1:0; no browser)
 vitest.functional.config.ts  test/functional/**; build mock-bank first

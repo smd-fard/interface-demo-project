@@ -1,25 +1,25 @@
 {
-	"id": "ir-20260930T032228-3f82",
-	"runId": "replay-20260930T032226-293a",
+	"id": "ir-20260930T191955-aea9",
+	"runId": "replay-20260930T191953-0ab5",
 	"runKind": "replay",
 	"kind": "takeover",
 	"reason": {
 		"code": "app_error",
-		"text": "Expected s06-click-search to complete without a app_error condition; observed app_error (artifact): matched \"Server Error\""
+		"text": "Expected s06-click-search to complete with no app_error condition; observed app_error (artifact): matched \"Server Error\""
 	},
 	"subject": {
 		"kind": "capability",
 		"id": "member-lookup",
-		"version": "1.0.1"
+		"version": "1.0.0"
 	},
 	"currentStep": {
 		"index": 5,
 		"id": "s06-click-search",
-		"description": "Run the search; the content frame shows Member Inquiry for the member.",
-		"risk": "read"
+		"description": "Click button \"Search\".",
+		"risk": "reversible"
 	},
 	"state": {
-		"url": "http://127.0.0.1:4611/",
+		"url": "http://127.0.0.1:4211/",
 		"title": "CoreOne 7.4",
 		"screenshotRef": {
 			"id": "screenshot-0001",
@@ -43,5 +43,5 @@
 		"aborted"
 	],
 	"status": "claimed",
-	"createdAt": "2026-09-30T03:22:28.274Z"
+	"createdAt": "2026-09-30T19:19:55.582Z"
 }

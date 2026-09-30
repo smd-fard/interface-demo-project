@@ -1,12 +1,12 @@
 {
-	"runId": "replay-20260930T034020-b613",
+	"runId": "replay-20260930T191926-49aa",
 	"kind": "replay",
-	"startedAt": "2026-09-30T03:40:20.954Z",
-	"endedAt": "2026-09-30T03:40:22.068Z",
+	"startedAt": "2026-09-30T19:19:26.608Z",
+	"endedAt": "2026-09-30T19:19:28.151Z",
 	"artifact": {
 		"id": "member-lookup",
 		"version": "1.0.0",
-		"contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+		"contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
 	},
 	"resultKind": "failure",
 	"evidence": [
@@ -29,8 +29,8 @@
 		{
 			"id": "json-0001",
 			"kind": "json",
-			"path": "interventions/ir-20260930T034021-b633.json",
-			"sha256": "6860b36a098d69206325f24d450d676ba15561c6b79a96d0b2ad89107fa72e52",
+			"path": "interventions/ir-20260930T191928-4403.json",
+			"sha256": "fb59ad34527fa3d53bc6bd8988871e439efe6b2e099a7698e01784155340b56d",
 			"redacted": true,
 			"localOnly": false
 		},
@@ -52,5 +52,5 @@
 		}
 	],
 	"logPath": "run.jsonl",
-	"redactionRulesVersion": "1.1.0"
+	"redactionRulesVersion": "1.2.0"
 }

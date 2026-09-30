@@ -5,3 +5,4 @@ pnpm-lock.yaml
 .turbo
 coverage
 evidence/
+.runs

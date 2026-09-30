@@ -1,4 +1,4 @@
-import type { Checkpoint, KnownDialog, Step } from '@idp/artifact-schema';
+import type { Checkpoint, KnownDialog, RiskClass, Step } from '@idp/artifact-schema';
 import { ApprovalRequiredError } from '@idp/surface';
 import { CheckpointVerifier } from '../checkpoints/CheckpointVerifier.js';
 import { classifyCondition } from '../conditions/classifyCondition.js';
@@ -29,6 +29,7 @@ import { runNavigate } from './handlers/navigate.js';
 import { runPress } from './handlers/press.js';
 import { runSelect } from './handlers/select.js';
 import { runWait } from './handlers/wait.js';
+import { effectiveRisk } from './performAction.js';
 import type { StepContext, StepPosition } from './StepContext.js';
 import type { StepOutcome } from './StepOutcome.js';
 import type { StepRunResult } from './StepRunResult.js';
@@ -213,6 +214,7 @@ export class StepRunner {
 			reverify: () => verifyCheckpoint(step.checkpoint, position, scoped.context),
 		});
 		try {
+			if (initial === undefined) await this.recordCheckpointBefore(step, scoped, recovery);
 			let next = initial;
 			for (;;) {
 				let settled: Settled;
@@ -374,7 +376,7 @@ export class StepRunner {
 		if (step === null || position === null) {
 			throw exhausted(null, 'a step to retry', `${condition.code} at the success condition: there is no step to retry`);
 		}
-		if (step.risk === 'irreversible') {
+		if (this.riskOf(step) === 'irreversible') {
 			throw exhausted(
 				position,
 				`${step.id} to load`,
@@ -389,7 +391,10 @@ export class StepRunner {
 			);
 		}
 		const prefix = this.prefixOf(position, step.phase === 'login' ? 1 : this.firstMainIndex());
-		const irreversible = prefix.find((index) => this.steps[index]?.risk === 'irreversible');
+		const irreversible = prefix.find((index) => {
+			const prior = this.steps[index];
+			return prior !== undefined && this.riskOf(prior) === 'irreversible';
+		});
 		if (irreversible !== undefined) {
 			throw exhausted(
 				position,
@@ -407,16 +412,24 @@ export class StepRunner {
 		};
 		await (this.context.sleep ?? sleep)(plan.backoffMs);
 		if (position.index === 0) return RESTART; // the failed step is the entry navigation itself
-		return this.reload(step, position, scope.scoped, prefix);
+		return this.reload(step, position, scope.scoped, recovery, prefix);
 	}
 
 	/**
 	 * Reloads the artifact's entry route (its first step, a navigate, through the guarded surface — its checkpoint is
 	 * not the target of a reload: the session may already be signed on). Then, from what the reload shows: the
-	 * step's own checkpoint already holds (e.g. a sign-on whose landing page failed) → done; a condition → settle
-	 * it; otherwise re-run the steps between the entry and the failed one, then the step itself.
+	 * step's own checkpoint already holds (e.g. a sign-on whose landing page failed) → done, but only when that
+	 * proves the step took effect — the checkpoint did not hold before the step was first attempted, or the step is
+	 * read-only (not an extract, whose read would be lost); a condition → settle it; otherwise re-run the steps
+	 * between the entry and the failed one, then the step itself.
 	 */
-	private async reload(step: Step, position: StepPosition, scoped: Scoped, prefix: readonly number[]): Promise<Rerun> {
+	private async reload(
+		step: Step,
+		position: StepPosition,
+		scoped: Scoped,
+		recovery: StepRecovery,
+		prefix: readonly number[],
+	): Promise<Rerun> {
 		const entry = this.steps[0];
 		if (entry?.kind !== 'navigate') {
 			throw exhausted(
@@ -444,7 +457,9 @@ export class StepRunner {
 		}
 		if (step.checkpoint !== undefined) {
 			const verdict = await context.verifier.verify(step.checkpoint, context.binder.bindings, 1);
-			if (verdict.kind !== 'timeout') {
+			const provesDone =
+				recovery.checkpointHeldBefore === false || (this.riskOf(step) === 'read' && step.kind !== 'extract');
+			if (verdict.kind === 'condition' || (verdict.kind === 'held' && provesDone)) {
 				logCheckpoint(step.checkpoint, position, verdict, context);
 				return {
 					kind: 'settle',
@@ -481,7 +496,7 @@ export class StepRunner {
 				`${condition.code} (${condition.source}) after ${state.reauths} re-auth(s): ${condition.signal}`,
 			);
 		}
-		const ran = this.steps.slice(0, position.index + 1).find((candidate) => candidate.risk === 'irreversible');
+		const ran = this.steps.slice(0, position.index + 1).find((candidate) => this.riskOf(candidate) === 'irreversible');
 		if (ran !== undefined) {
 			throw lost(
 				`a session that can be re-established by re-running ${step.id}'s prefix`,
@@ -518,6 +533,22 @@ export class StepRunner {
 			}
 		}
 		return RESTART;
+	}
+
+	/**
+	 * Records whether the step's checkpoint already holds before the step is first attempted (one evaluation, no
+	 * detectors, not logged). Only with condition rules (they bring the failed-load retry that reads it) and only
+	 * once per step; unrecorded, a retry's reload never counts the step as done by its checkpoint alone.
+	 */
+	private async recordCheckpointBefore(step: Step, scoped: Scoped, recovery: StepRecovery): Promise<void> {
+		if (step.checkpoint === undefined || scoped.watch === null || recovery.checkpointHeldBefore !== null) return;
+		const { surface, binder } = scoped.context;
+		recovery.checkpointHeldBefore = (await surface.check(step.checkpoint, binder.bindings, 1)).kind === 'held';
+	}
+
+	/** The step's effective risk: declared, raised to what the policy guard classified when it acted. */
+	private riskOf(step: Step): RiskClass {
+		return effectiveRisk(step, this.context);
 	}
 
 	/** Indices from `from` up to (not including) the step at `position`. */

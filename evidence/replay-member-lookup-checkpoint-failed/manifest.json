@@ -1,0 +1,56 @@
+{
+	"runId": "replay-20260930T191833-0ace",
+	"kind": "replay",
+	"startedAt": "2026-09-30T19:18:33.748Z",
+	"endedAt": "2026-09-30T19:18:48.215Z",
+	"artifact": {
+		"id": "member-lookup",
+		"version": "1.0.0",
+		"contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
+	},
+	"resultKind": "failure",
+	"evidence": [
+		{
+			"id": "screenshot-0001",
+			"kind": "screenshot",
+			"path": "screenshots/0001-intervention.png",
+			"sha256": "5fe878ca207dc9c22fad02f2de00b6044fa29bfa2bea75c94d1f61d5a570aabf",
+			"redacted": true,
+			"localOnly": false
+		},
+		{
+			"id": "a11y-snapshot-0001",
+			"kind": "a11y_snapshot",
+			"path": "snapshots/0001.json",
+			"sha256": "cfe8cdcec24aa48f0146a38f6820fbef8e3c163f51ea76a863c7a1324deb30ba",
+			"redacted": true,
+			"localOnly": false
+		},
+		{
+			"id": "json-0001",
+			"kind": "json",
+			"path": "interventions/ir-20260930T191848-8a9f.json",
+			"sha256": "cb93cca7f839158bef3deb70fc5e8a48f33458dd5e3f9eba6f61b8fdd2b4dbda",
+			"redacted": true,
+			"localOnly": false
+		},
+		{
+			"id": "screenshot-0002",
+			"kind": "screenshot",
+			"path": "screenshots/0002-failure-s06-click-search.png",
+			"sha256": "5fe878ca207dc9c22fad02f2de00b6044fa29bfa2bea75c94d1f61d5a570aabf",
+			"redacted": true,
+			"localOnly": false
+		},
+		{
+			"id": "a11y-snapshot-0002",
+			"kind": "a11y_snapshot",
+			"path": "snapshots/0002.json",
+			"sha256": "cfe8cdcec24aa48f0146a38f6820fbef8e3c163f51ea76a863c7a1324deb30ba",
+			"redacted": true,
+			"localOnly": false
+		}
+	],
+	"logPath": "run.jsonl",
+	"redactionRulesVersion": "1.2.0"
+}

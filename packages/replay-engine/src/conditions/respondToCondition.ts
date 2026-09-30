@@ -125,7 +125,7 @@ export async function respondToCondition(
 		case 'failure':
 			throw new ReplayError(failureReasonFor(condition.code), {
 				step: position,
-				expected: `${where(position)} to complete without a ${condition.code} condition`,
+				expected: `${where(position)} to complete with no ${condition.code} condition`,
 				observed: `${condition.code} (${condition.source}): ${condition.signal}`,
 			});
 	}

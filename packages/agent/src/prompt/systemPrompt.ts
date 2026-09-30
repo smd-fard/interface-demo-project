@@ -69,7 +69,7 @@ export function buildSystemPrompt(options: SystemPromptOptions): string {
 		'',
 		'# Rules',
 		'1. Call exactly one tool per turn, then wait for the next observation.',
-		'2. Give every call a `reason`: one sentence on why this step moves toward the goal.',
+		'2. Give every call a `reason`: one sentence that justifies the step from what you observed on the screen and says why it moves toward the goal, e.g. "The login form\'s Password field is empty; the password is required to sign on." A bare label such as "Sign on" or "Password" is rejected.',
 		'3. Name elements only by a ref from the latest observation; refs change between observations.',
 		'4. Never type a real value: use the input and credential placeholders above. A masked value cannot be typed.',
 		'5. Declare each output with declare_output before you extract it.',

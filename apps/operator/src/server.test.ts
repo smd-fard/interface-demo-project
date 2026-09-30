@@ -3,7 +3,9 @@ import { ControlClient, type LeaseView } from '@idp/session';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { fakeControlFetch, PNG_BYTES, type FakeControl } from './fakeControlFetch.test-helper.js';
 import { APPROVAL_ID, TAKEOVER_ID, TOKEN } from './fixtures.test-helper.js';
-import { OperatorServer } from './server.js';
+import { OperatorServer, SESSION_COOKIE } from './server.js';
+
+const LOGIN_KEY = 'unitTestConsoleLoginKey'.repeat(2);
 
 interface Reply {
 	readonly status: number;
@@ -16,13 +18,22 @@ describe('OperatorServer', () => {
 	let control: FakeControl;
 	let server: OperatorServer;
 	let errors: unknown[];
+	/** The `Cookie` header of the logged-in browser. */
+	let cookie: string;
 	const replies: Reply[] = [];
 
 	beforeEach(async () => {
 		control = fakeControlFetch();
 		errors = [];
 		const client = new ControlClient({ url: 'http://127.0.0.1:1', token: TOKEN, fetch: control.fetch });
-		server = await OperatorServer.start({ control: client, port: 0, onError: (error) => errors.push(error) });
+		server = await OperatorServer.start({
+			control: client,
+			port: 0,
+			loginKey: LOGIN_KEY,
+			onError: (error) => errors.push(error),
+		});
+		const login = await send('GET', `/login?k=${LOGIN_KEY}`, { anonymous: true });
+		cookie = String(login.headers['set-cookie']?.[0] ?? '').split(';')[0] ?? '';
 	});
 	afterEach(async () => {
 		await server.close();
@@ -38,24 +49,31 @@ describe('OperatorServer', () => {
 	const send = (
 		method: string,
 		path: string,
-		options: { readonly headers?: Record<string, string>; readonly body?: string } = {},
+		options: {
+			readonly headers?: Record<string, string>;
+			readonly body?: string;
+			/** Without the session cookie. */
+			readonly anonymous?: boolean;
+		} = {},
 	): Promise<Reply> =>
 		new Promise((resolve, reject) => {
 			const { port } = server.address();
-			const request = httpRequest(
-				{ host: '127.0.0.1', port, method, path, headers: { host: `127.0.0.1:${port}`, ...options.headers } },
-				(response) => {
-					const chunks: Buffer[] = [];
-					response.on('data', (chunk: Buffer) => chunks.push(chunk));
-					response.on('end', () => {
-						const body = Buffer.concat(chunks);
-						const reply = { status: response.statusCode ?? 0, headers: response.headers, body, text: body.toString() };
-						replies.push(reply);
-						resolve(reply);
-					});
-					response.on('error', reject);
-				},
-			);
+			const headers = {
+				host: `127.0.0.1:${port}`,
+				...(options.anonymous === true ? {} : { cookie }),
+				...options.headers,
+			};
+			const request = httpRequest({ host: '127.0.0.1', port, method, path, headers }, (response) => {
+				const chunks: Buffer[] = [];
+				response.on('data', (chunk: Buffer) => chunks.push(chunk));
+				response.on('end', () => {
+					const body = Buffer.concat(chunks);
+					const reply = { status: response.statusCode ?? 0, headers: response.headers, body, text: body.toString() };
+					replies.push(reply);
+					resolve(reply);
+				});
+				response.on('error', reject);
+			});
 			request.on('error', reject);
 			request.end(options.body);
 		});
@@ -78,6 +96,60 @@ describe('OperatorServer', () => {
 		});
 
 	const posts = () => control.calls.filter((call) => call.method === 'POST');
+
+	describe('authentication (the console login key)', () => {
+		it('login sets an HttpOnly SameSite=Strict session cookie and redirects to the list', async () => {
+			expect(cookie).toMatch(new RegExp(`^${SESSION_COOKIE}=[0-9a-f]{64}$`));
+			const again = await send('GET', `/login?k=${LOGIN_KEY}`, { anonymous: true });
+			expect(again.status).toBe(401);
+			expect(again.text).toContain('LOGIN_KEY_USED');
+		});
+
+		it('the Set-Cookie attributes', async () => {
+			const fresh = await OperatorServer.start({
+				control: new ControlClient({ url: 'http://127.0.0.1:1', token: TOKEN, fetch: control.fetch }),
+				port: 0,
+				loginKey: LOGIN_KEY,
+			});
+			try {
+				const response = await fetch(`${fresh.url}/login?k=${LOGIN_KEY}`, { redirect: 'manual' });
+				expect(response.status).toBe(303);
+				expect(response.headers.get('location')).toBe('/');
+				expect(response.headers.get('set-cookie')).toMatch(/; HttpOnly; SameSite=Strict; Path=\/$/);
+			} finally {
+				await fresh.close();
+			}
+		});
+
+		it('every route but /login needs the session cookie (401 LOGIN_REQUIRED), without calling the session', async () => {
+			const before = control.calls.length;
+			for (const [method, path] of [
+				['GET', '/'],
+				['GET', '/api/state'],
+				['GET', `/interventions/${TAKEOVER_ID}`],
+				['GET', '/evidence/screenshot-0001'],
+				['POST', `/interventions/${TAKEOVER_ID}/claim`],
+				['POST', '/abort'],
+			] as const) {
+				const reply = await send(method, path, { anonymous: true });
+				expect(reply.status).toBe(401);
+				expect(reply.text).toContain('LOGIN_REQUIRED');
+			}
+			const forged = await send('GET', '/', {
+				anonymous: true,
+				headers: { cookie: `${SESSION_COOKIE}=${'0'.repeat(64)}` },
+			});
+			expect(forged.status).toBe(401);
+			expect(control.calls.length).toBe(before);
+		});
+
+		it('a wrong login key is refused and sets no cookie', async () => {
+			const reply = await send('GET', `/login?k=${'x'.repeat(LOGIN_KEY.length)}`, { anonymous: true });
+			expect(reply.status).toBe(401);
+			expect(reply.text).toContain('LOGIN_REJECTED');
+			expect(reply.headers['set-cookie']).toBeUndefined();
+		});
+	});
 
 	it('binds to 127.0.0.1 only, on an ephemeral port', () => {
 		expect(server.address().address).toBe('127.0.0.1');
@@ -333,9 +405,16 @@ describe('OperatorServer', () => {
 			}
 		}
 		const client = new BrokenClient({ url: 'http://127.0.0.1:1', token: TOKEN, fetch: control.fetch });
-		const broken = await OperatorServer.start({ control: client, port: 0, onError: (error) => errors.push(error) });
+		const broken = await OperatorServer.start({
+			control: client,
+			port: 0,
+			loginKey: LOGIN_KEY,
+			onError: (error) => errors.push(error),
+		});
 		try {
-			const response = await fetch(`${broken.url}/api/state`);
+			const login = await fetch(`${broken.url}/login?k=${LOGIN_KEY}`, { redirect: 'manual' });
+			const session = (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+			const response = await fetch(`${broken.url}/api/state`, { headers: { cookie: session } });
 			const text = await response.text();
 			replies.push({ status: response.status, headers: {}, body: Buffer.from(text), text });
 			expect(response.status).toBe(500);

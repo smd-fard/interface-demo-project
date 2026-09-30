@@ -40,6 +40,9 @@ const STRUCTURAL_KEYS: ReadonlySet<string> = new Set([
 	'resultKind',
 	'durationMs',
 	'tool',
+	// Decision metadata: a response id, a model id, a stop-reason enum and integer counts (schema-pinned formats).
+	// Token counts and latencies are 5-digit numbers often enough that the member-number pattern would mask them.
+	'modelResponse',
 ]);
 
 /**

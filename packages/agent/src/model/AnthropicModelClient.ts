@@ -1,7 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { MissingApiKeyError } from '../errors/MissingApiKeyError.js';
 import { ModelCallError } from '../errors/ModelCallError.js';
-import type { ModelClient, ModelRequest } from './ModelClient.js';
+import type { ModelCallOptions, ModelClient, ModelRequest } from './ModelClient.js';
 import type { ModelMessage } from './ModelMessage.js';
 import type { ModelStopReason, ModelTurn } from './ModelTurn.js';
 
@@ -9,6 +9,8 @@ import type { ModelStopReason, ModelTurn } from './ModelTurn.js';
 export const DEFAULT_ANTHROPIC_MODEL = 'claude-sonnet-5-5';
 /** Per-turn output bound: one tool call plus adaptive thinking fits well inside it. */
 export const DEFAULT_MAX_TOKENS = 8192;
+/** Per-request timeout when the loop passes no smaller remaining budget. */
+const DEFAULT_TIMEOUT_MS = 120_000;
 
 /** The `output_config.effort` levels the client may request. */
 export type AnthropicEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -86,6 +88,7 @@ export class AnthropicModelClient implements ModelClient {
 	readonly #apiKey: string;
 	readonly #maxTokens: number;
 	readonly #effort: AnthropicEffort | undefined;
+	readonly #timeoutMs: number;
 
 	constructor(options: AnthropicModelClientOptions = {}) {
 		const env = options.env ?? process.env;
@@ -97,14 +100,19 @@ export class AnthropicModelClient implements ModelClient {
 		this.#apiKey = apiKey;
 		this.#maxTokens = options.maxTokens ?? DEFAULT_MAX_TOKENS;
 		this.#effort = options.effort;
+		this.#timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 		this.#client = new Anthropic({
 			apiKey,
 			maxRetries: options.maxRetries ?? 2,
-			timeout: options.timeoutMs ?? 120_000,
+			timeout: this.#timeoutMs,
 		});
 	}
 
-	async next(request: ModelRequest): Promise<ModelTurn> {
+	/**
+	 * One Messages call. With `options.timeoutMs` the per-request timeout is `min(remaining, configured)`, and
+	 * `options.signal` aborts the call and any SDK retry, so a turn never outlives the discovery budget.
+	 */
+	async next(request: ModelRequest, options: ModelCallOptions = {}): Promise<ModelTurn> {
 		const lastTool = request.tools.length - 1;
 		const tools: Anthropic.Tool[] = request.tools.map((tool, index) => ({
 			name: tool.name,
@@ -114,20 +122,34 @@ export class AnthropicModelClient implements ModelClient {
 		}));
 		let message: Anthropic.Message;
 		try {
-			message = await this.#client.messages.create({
-				model: this.#model,
-				max_tokens: this.#maxTokens,
-				system: [{ type: 'text', text: request.system, cache_control: EPHEMERAL }],
-				messages: request.messages.map(toMessageParam),
-				tools,
-				tool_choice: { type: 'auto', disable_parallel_tool_use: true },
-				cache_control: EPHEMERAL,
-				...(this.#effort === undefined ? {} : { output_config: { effort: this.#effort } }),
-			});
+			message = await this.#client.messages.create(
+				{
+					model: this.#model,
+					max_tokens: this.#maxTokens,
+					system: [{ type: 'text', text: request.system, cache_control: EPHEMERAL }],
+					messages: request.messages.map(toMessageParam),
+					tools,
+					tool_choice: { type: 'auto', disable_parallel_tool_use: true },
+					cache_control: EPHEMERAL,
+					...(this.#effort === undefined ? {} : { output_config: { effort: this.#effort } }),
+				},
+				this.#requestOptions(options),
+			);
 		} catch (error) {
 			throw this.#callError(error);
 		}
 		return this.#toTurn(message);
+	}
+
+	#requestOptions(options: ModelCallOptions): Anthropic.RequestOptions {
+		const timeout =
+			options.timeoutMs === undefined
+				? undefined
+				: Math.max(1, Math.min(Math.floor(options.timeoutMs), this.#timeoutMs));
+		return {
+			...(options.signal === undefined ? {} : { signal: options.signal }),
+			...(timeout === undefined ? {} : { timeout }),
+		};
 	}
 
 	#toTurn(message: Anthropic.Message): ModelTurn {
@@ -149,6 +171,7 @@ export class AnthropicModelClient implements ModelClient {
 				cacheCreationInputTokens: usage.cache_creation_input_tokens ?? 0,
 			},
 			providerContent: message.content,
+			response: { id: message.id, model: message.model, stopReason: message.stop_reason ?? 'none' },
 		};
 	}
 

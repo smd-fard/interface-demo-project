@@ -64,6 +64,17 @@ outputs; only the sink copies are masked. The artifact rule scan skips the decla
 non-sensitive param (e.g. a deposit amount `250.00`), but a literal amount in a step still fails: it must be a
 param reference.
 
+**Digests and name-like values (rules 1.1.0 → 1.2.0).** The member-number pattern masked 5-digit runs inside
+the run log's observation digests (`sha256:5899f68e40f[•••45]`), corrupting them. Hex digests — a
+`sha256:<8+ hex>` token or a standalone run of 32+ hex characters — are now exempt from the config patterns
+and terms, and so is a URL authority (`http://127.0.0.1:61012`: the CLI printed an ephemeral control port as
+`[•••12]`). They are not exempt from known-value masking: a known sensitive value is masked wherever it appears.
+Known values that are name-like (letters, spaces, `'`, `.`, `-`; no digits) now match case-insensitively, like
+the compiler's `TextGuard`, and only at word boundaries, so a param `Ann` masks `ANN` but not `Annual`. A
+value with a digit edge keeps matching only at a digit boundary (whatever its length), so `12345` never
+splits `8800123450`; any other value (a password, an id such as `AB12`) keeps case-sensitive substring
+matching, which errs towards masking.
+
 The masks are protected spans, and the redactor repeats until nothing changes, so it is idempotent. Per sink:
 
 - **Run log and results.** `redactRunLogEntry` and `redactResultForSink` keep structural keys verbatim (ids,

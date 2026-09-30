@@ -114,6 +114,8 @@ fault applies on its **default route**. "Content pages" means every signed-in ro
 | `failed_load_persistent` | always       | content pages                       | HTTP 503, title "Service Unavailable", on every matching request.                                              |
 | `app_error`              | once         | content pages                       | HTTP 500, title "Server Error", text "Runtime Error — ORA-06512: at …".                                         |
 | `control_missing`        | once         | `/member/search`                    | Member Search without the Search button (for `target_unresolved`).                                              |
+| `late_render`            | once         | `/member/search`                    | Member Search whose Search button an inline script writes in `delayMs` (default 1500 ms) after load (late element). |
+| `wrong_screen`           | once         | `/member/detail`                    | "Account Summary" (title `CoreOne - Account Summary`, HTTP 200) instead of Member Inquiry (for `checkpoint_failed`). |
 
 Request-level faults are checked in this order, after the session check: `session_timeout`, `slow_load`
 (then continues), `failed_load` / `failed_load_persistent`, `app_error`, `permission_denied`. The other codes

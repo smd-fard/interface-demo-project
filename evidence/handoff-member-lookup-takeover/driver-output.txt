@@ -1,0 +1,25 @@
+attended session: control API at http://127.0.0.1:4222; run dir .runs/evidence/handoff-member-lookup-takeover/runs/replay-20260930T191953-0ab5
+operator: takeover request ir-20260930T191955-aea9 (app_error) at step s06-click-search
+operator: lease before claim = PAUSED
+operator: claimed; lease = HUMAN
+operator: 3 human actions recorded; resuming
+lease path: AGENT → PAUSED → HUMAN → RESUMING → AGENT
+result.kind = success
+{
+	"kind": "success",
+	"runId": "replay-20260930T191953-0ab5",
+	"artifact": {
+		"id": "member-lookup",
+		"version": "1.0.0",
+		"contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
+	},
+	"outputs": {
+		"savingsBalance": "[REDACTED]"
+	},
+	"durationMs": 2519,
+	"drift": [],
+	"recoveries": 0
+}
+
+run dir: .runs/evidence/handoff-member-lookup-takeover/runs/replay-20260930T191953-0ab5
+exit: 0

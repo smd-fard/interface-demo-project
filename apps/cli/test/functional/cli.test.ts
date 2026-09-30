@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { CapabilityArtifactSchema, computeContentHash, RunResultSchema, type RunResult } from '@idp/artifact-schema';
@@ -359,5 +359,51 @@ describe('idp discover --model anthropic without a key', () => {
 		expect(run.stderr).toContain('error [MISSING_API_KEY]: ANTHROPIC_API_KEY is not set');
 		expect(existsSync(runsRoot) ? await readdir(runsRoot) : []).toEqual(before);
 		expectNoSecrets(run);
+	});
+});
+
+describe('idp operator (FR5: the console needs its one-time login key)', () => {
+	it('prints only a login URL with a separate 0600 console key (never the control token); the console refuses anyone without it', async () => {
+		const control = await mkdtemp(path.join(tmpdir(), 'idp-cli-operator-'));
+		const runDir = path.join(control, 'replay-20260930T100000-a1b2');
+		await mkdir(runDir);
+		const token = 'cd'.repeat(32);
+		const tokenFile = path.join(runDir, 'control.token');
+		await writeFile(tokenFile, token, { mode: 0o600 });
+		// Nothing listens on port 1: the console only calls the control API after a login.
+		await writeFile(path.join(runDir, 'control.json'), JSON.stringify({ controlUrl: 'http://127.0.0.1:1', tokenFile }));
+		const child = spawn(process.execPath, [MAIN, 'operator', '--runs-root', control, '--port', '0'], {
+			cwd: CLI_DIR,
+			env: cliEnv(),
+			stdio: ['ignore', 'pipe', 'pipe'],
+		});
+		let stdout = '';
+		let stderr = '';
+		child.stderr.setEncoding('utf8').on('data', (chunk: string) => (stderr += chunk));
+		try {
+			const [url, key] = await new Promise<[string, string]>((resolve, reject) => {
+				child.stdout.setEncoding('utf8').on('data', (chunk: string) => {
+					stdout += chunk;
+					const match = /operator console at (http:\/\/127\.0\.0\.1:\d+)\/login\?k=([A-Za-z]{40})\n/.exec(stdout);
+					if (match?.[1] !== undefined && match[2] !== undefined) resolve([match[1], match[2]]);
+				});
+				child.once('exit', (code) => reject(new Error(`idp operator exited early with ${String(code)}: ${stderr}`)));
+			});
+			const keyFile = path.join(runDir, 'operator.key');
+			expect(await readFile(keyFile, 'utf8')).toBe(key);
+			expect((await stat(keyFile)).mode & 0o777).toBe(0o600);
+			expect(stdout + stderr).not.toContain(token);
+			expect((await fetch(`${url}/api/state`)).status).toBe(401);
+			expect((await fetch(`${url}/login?k=${'A'.repeat(40)}`, { redirect: 'manual' })).status).toBe(401);
+			const login = await fetch(`${url}/login?k=${key}`, { redirect: 'manual' });
+			expect(login.status).toBe(303);
+			expect(login.headers.get('set-cookie')).toContain('HttpOnly; SameSite=Strict');
+			child.kill('SIGTERM');
+			await new Promise((resolve) => child.once('close', resolve));
+			expect(existsSync(keyFile)).toBe(false);
+		} finally {
+			if (child.exitCode === null) child.kill('SIGKILL');
+			await rm(control, { recursive: true, force: true });
+		}
 	});
 });

@@ -11,6 +11,8 @@ export const FAULT_CODES = [
 	'failed_load_persistent',
 	'app_error',
 	'control_missing',
+	'late_render',
+	'wrong_screen',
 ] as const;
 
 /** One of `FAULT_CODES`. */
@@ -38,6 +40,8 @@ export const FAULT_DEFAULTS: Record<FaultCode, { readonly routes: readonly strin
 	failed_load_persistent: { routes: CONTENT_PAGES, mode: 'always' },
 	app_error: { routes: CONTENT_PAGES, mode: 'once' },
 	control_missing: { routes: ['/member/search'], mode: 'once' },
+	late_render: { routes: ['/member/search'], mode: 'once' },
+	wrong_screen: { routes: ['/member/detail'], mode: 'once' },
 };
 
 /** Type guard for a known fault code. */

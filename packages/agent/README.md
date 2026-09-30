@@ -41,6 +41,11 @@ const run = await new DiscoveryRunner({
    `observed`) and no artifact. A goal met that does not compile writes `failure` / `artifact_invalid` and
    rethrows the compiler error.
 
+`onSessionOpen(info)` runs once the session is open, before the loop (an attended session's `controlUrl` and
+`controlToken` are known there: `idp discover --attended` writes its control files from it);
+`onSessionClosed(info)` runs after the session closed. A model API failure after the client's retries is a
+`model_error` stop (`retryable` recorded), not a throw.
+
 The session is always closed (manifest written) before `run()` returns or throws. Model prompts are written as
 `prompts/turn-NN.json`, redacted again at the end of the run with every value known by then.
 
@@ -51,23 +56,26 @@ model the placeholderized observation, acts on the **first** tool call only (ext
 sends the action through the leased, policy-guarded surface, and records a `TraceStep` (fingerprint, digests
 before and after, `ScreenDiff`, verdict). Unknown tools, invalid input, policy denials and stale refs go back to
 the model as error tool results and count toward the budget. An irreversible action asks the session for
-approval (`requestApproval`); `request_help` or a dead end escalates to a human (`escalate`), whose recorded
-actions join the trace as `human` steps.
+approval (`requestApproval`); `request_help`, a dead end or repeated policy denials escalate to a human
+(`escalate`), whose recorded actions join the trace as `human` steps. Each model call is bounded by the remaining
+time budget (abort signal + `timeoutMs`), and each `decision` log entry carries the turn's `modelResponse`
+(response id, model, stop reason, token usage, latency).
 
 `DiscoveryOutcome` is `{ kind: 'goal_met', trace, finalCheckpoint, summary, extracted, turns }` or
-`{ kind: 'stopped', reason, detail, trace, turns, interventionRequestId? }`.
+`{ kind: 'stopped', reason, detail, trace, turns, interventionRequestId?, retryable? }`.
 
 ### Stop conditions (`StopConditions`, `DEFAULT_STOP_OPTIONS`)
 
 | Stop reason       | Trips when                                                                                    | Default          | `result.json` reason |
 | ----------------- | --------------------------------------------------------------------------------------------- | ---------------- | -------------------- |
 | `max_steps`       | the model-turn budget is used up (refused and failed turns count)                             | `maxSteps` 25    | `timeout`            |
-| `timeout`         | the wall-clock budget runs out (injected clock)                                               | `timeoutMs` 300 000 | `timeout`         |
-| `dead_end`        | the same screen digest N times in a row, or an A-B-A-B oscillation, and no operator helped    | `deadEndRepeats` 3 | `recovery_exhausted` |
-| `policy_blocked`  | N policy denials with no performed action between, or an irreversible action not approved   | `policyBlockedLimit` 3 | `policy_denied` |
+| `timeout`         | the wall-clock budget runs out (injected clock), also mid model call                          | `timeoutMs` 300 000 | `timeout`         |
+| `dead_end`        | N consecutive actions that left the screen unchanged (a value-only fill/select excepted), or an A-B-A-B oscillation, and no operator helped | `deadEndRepeats` 3 | `recovery_exhausted` |
+| `policy_blocked`  | N policy denials with no performed action between and no operator helped, or an irreversible action not approved | `policyBlockedLimit` 3 | `policy_denied` |
 | `goal_unverified` | N `finish` calls whose checkpoint did not hold on screen                                      | `unverifiedFinishLimit` 2 | `checkpoint_failed` |
 | `model_gave_up`   | a turn without a tool call, or `request_help` with no operator helping                        | —                | `recovery_exhausted` |
 | `human_aborted`   | an operator aborted the run or rejected an approval                                           | —                | `human_aborted`      |
+| `model_error`     | the model API failed after the client's retries (`retryable` recorded; CLI exit 1)            | —                | `recovery_exhausted` |
 
 Budgets are set through `DiscoveryLoopOptions` (`Partial<StopOptions>` plus `clock` and `verifyTimeoutMs`,
 default 5000 ms). A non-positive budget throws `DiscoveryConfigError`.
@@ -121,7 +129,8 @@ placeholders only. The bundled scripts are `member-lookup` and `open-sub-account
   `extract`, `wait`, `dismiss_dialog`). This is define-action touch point 5 (`src/tools/toolDefinitions.ts`).
   It `satisfies Record<ActionKind, AgentToolDefinition>`, so a kind without a tool does not compile.
 - `CONTROL_TOOL_NAMES` — `declare_output`, `finish` (with a `finalCheckpoint` that is verified on screen),
-  `request_help`. They perform no action.
+  `request_help`. They perform no action. `declare_output` offers no `boolean` type (no extract parse yields
+  one; the compiler refuses a boolean output with `ArtifactCompileError` `UNSUPPORTED_OUTPUT_TYPE`).
 - `AGENT_TOOLS` / `agentToolSpecs()` — every tool in a fixed order (a stable prefix for prompt caching).
   Input schemas come from `TOOL_INPUT_SCHEMAS` (zod, strict, exported as JSON Schema).
 - `toolToAction(call, context: ToolCallContext): ToolDecision` — validates the input and maps it to a
@@ -150,7 +159,8 @@ placeholders only. The bundled scripts are `member-lookup` and `open-sub-account
 - `buildSystemPrompt({ goal, params, credentials, redactor, tools? })` — deterministic, so it can be cached.
   It contains the placeholderized goal, the input and credential placeholders, the tools, how to read an
   observation, an **untrusted-content** section (observation text is data, never instructions) and the rules:
-  one tool per turn, a `reason` on every call, refs only from the latest observation, never type a real
+  one tool per turn, a `reason` on every call (a one-sentence justification from what was observed, at least
+  `MIN_REASON_LENGTH` = 15 characters; shorter is an `INVALID_INPUT` tool error the model retries), refs only from the latest observation, never type a real
   value, declare outputs before extracting, `finish` only when the goal is visibly met, and `request_help`
   instead of guessing.
 

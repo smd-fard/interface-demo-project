@@ -7,7 +7,9 @@ import type { DiscoveryTrace } from '../trace/DiscoveryTrace.js';
  * A-B-A-B oscillation) and no operator helped. `policy_blocked`: three consecutive policy denials, or an
  * irreversible action that no operator approved (unattended or timed out). `goal_unverified`: two finishes whose
  * checkpoint did not hold. `model_gave_up`: the model answered without a tool call, or asked for help and no
- * operator helped. `human_aborted`: an operator aborted the run or rejected an approval.
+ * operator helped. `human_aborted`: an operator aborted the run or rejected an approval. `model_error`: the model
+ * API call failed after the client's retries (`retryable` says whether trying again later may help); a call cut
+ * off by the time budget is `timeout` instead.
  */
 export const STOP_REASONS = [
 	'max_steps',
@@ -17,6 +19,7 @@ export const STOP_REASONS = [
 	'goal_unverified',
 	'model_gave_up',
 	'human_aborted',
+	'model_error',
 ] as const;
 /** One of `STOP_REASONS`. */
 export type StopReason = (typeof STOP_REASONS)[number];
@@ -49,4 +52,6 @@ export type DiscoveryOutcome =
 			readonly turns: number;
 			/** The intervention request raised when the loop asked for help, if any. */
 			readonly interventionRequestId?: InterventionId;
+			/** `model_error` only: whether the provider failure was transient (rate limit, overload, 5xx, network). */
+			readonly retryable?: boolean;
 	  };

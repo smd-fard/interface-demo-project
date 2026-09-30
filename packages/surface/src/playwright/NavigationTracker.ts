@@ -10,11 +10,18 @@ interface Load {
 	readonly frame: Frame;
 }
 
+/**
+ * The frame that issued a request, or `null` for a service-worker request: Playwright's `request.frame()` throws
+ * for those (the only error it raises, "Service Worker requests do not have an associated frame"); any other
+ * error is rethrown.
+ */
 function frameOf(request: Request): Frame | null {
+	if (request.serviceWorker() !== null) return null;
 	try {
 		return request.frame();
-	} catch {
-		return null; // a service-worker request has no frame
+	} catch (error) {
+		if (error instanceof Error && /Service Worker/i.test(error.message)) return null;
+		throw error;
 	}
 }
 
@@ -112,12 +119,8 @@ export class NavigationTracker {
 	lastNavigation(): NavigationInfo | null {
 		const last = this.last;
 		if (last === null) return null;
-		let framePath: readonly string[];
-		try {
-			framePath = last.frame.isDetached() ? [] : framePathOf(last.frame);
-		} catch {
-			framePath = [];
-		}
+		// `framePathOf` reads the frame tree synchronously (names and parents), which does not throw.
+		const framePath: readonly string[] = last.frame.isDetached() ? [] : framePathOf(last.frame);
 		return { framePath, url: last.url, status: last.status, durationMs: last.durationMs };
 	}
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ToolCallError } from '../errors/ToolCallError.js';
+import { MIN_REASON_LENGTH } from './toolInputSchemas.js';
 import { toolToAction, type ToolCallContext } from './toolToAction.js';
 
 const context: ToolCallContext = {
@@ -7,6 +8,9 @@ const context: ToolCallContext = {
 	sensitiveParams: new Set(['memberId']),
 	credentials: { username: 'teller01', password: 'synthetic-pass-01' },
 };
+
+/** A reason long enough for the schema (at least MIN_REASON_LENGTH characters). */
+const R = 'The field is shown on the current screen.';
 
 const call = (name: string, input: Record<string, unknown>) => ({ id: 'toolu_1', name, input });
 
@@ -35,7 +39,7 @@ describe('toolToAction', () => {
 	});
 
 	it('resolves a {{param}} fill to the concrete value, sensitive, and records the param source', () => {
-		const decision = toolToAction(call('fill', { ref: 'e3', value: '{{memberId}}', reason: 'r' }), context);
+		const decision = toolToAction(call('fill', { ref: 'e3', value: '{{memberId}}', reason: R }), context);
 		expect(decision).toMatchObject({
 			kind: 'action',
 			valueSource: { kind: 'param', name: 'memberId' },
@@ -44,8 +48,8 @@ describe('toolToAction', () => {
 	});
 
 	it('resolves credential placeholders without the model ever seeing the secret', () => {
-		const user = toolToAction(call('fill', { ref: 'e1', value: '{{credential.username}}', reason: 'r' }), context);
-		const password = toolToAction(call('fill', { ref: 'e2', value: '{{credential.password}}', reason: 'r' }), context);
+		const user = toolToAction(call('fill', { ref: 'e1', value: '{{credential.username}}', reason: R }), context);
+		const password = toolToAction(call('fill', { ref: 'e2', value: '{{credential.password}}', reason: R }), context);
 		expect(user).toMatchObject({
 			valueSource: { kind: 'credential', field: 'username' },
 			action: { value: 'teller01', sensitive: true },
@@ -57,53 +61,53 @@ describe('toolToAction', () => {
 	});
 
 	it('keeps a non-sensitive literal as typed and a non-sensitive param as not sensitive', () => {
-		expect(toolToAction(call('fill', { ref: 'e4', value: 'Summer fund', reason: 'r' }), context)).toMatchObject({
+		expect(toolToAction(call('fill', { ref: 'e4', value: 'Summer fund', reason: R }), context)).toMatchObject({
 			valueSource: { kind: 'literal' },
 			action: { value: 'Summer fund', sensitive: false },
 		});
-		expect(toolToAction(call('select', { ref: 'e5', option: '{{product}}', reason: 'r' }), context)).toMatchObject({
+		expect(toolToAction(call('select', { ref: 'e5', option: '{{product}}', reason: R }), context)).toMatchObject({
 			valueSource: { kind: 'param', name: 'product' },
 			action: { kind: 'select', option: 'Holiday Club' },
 		});
 	});
 
 	it('refuses an unknown placeholder, a missing credential, and a literal carrying a known value', () => {
-		expect(
-			toolError(() => toolToAction(call('fill', { ref: 'e1', value: '{{ssn}}', reason: 'r' }), context)).code,
-		).toBe('UNKNOWN_PLACEHOLDER');
+		expect(toolError(() => toolToAction(call('fill', { ref: 'e1', value: '{{ssn}}', reason: R }), context)).code).toBe(
+			'UNKNOWN_PLACEHOLDER',
+		);
 		expect(
 			toolError(() =>
-				toolToAction(call('fill', { ref: 'e1', value: '{{credential.password}}', reason: 'r' }), { params: {} }),
+				toolToAction(call('fill', { ref: 'e1', value: '{{credential.password}}', reason: R }), { params: {} }),
 			).code,
 		).toBe('UNKNOWN_PLACEHOLDER');
-		const leak = toolError(() => toolToAction(call('fill', { ref: 'e1', value: 'id 12345', reason: 'r' }), context));
+		const leak = toolError(() => toolToAction(call('fill', { ref: 'e1', value: 'id 12345', reason: R }), context));
 		expect(leak.code).toBe('SENSITIVE_LITERAL');
 		expect(leak.message).not.toContain('12345');
 	});
 
 	it('maps navigate, press, extract and dismiss_dialog', () => {
-		expect(toolToAction(call('navigate', { route: '/member/search', reason: 'r' }), context)).toMatchObject({
+		expect(toolToAction(call('navigate', { route: '/member/search', reason: R }), context)).toMatchObject({
 			action: { kind: 'navigate', route: '/member/search', actor: 'agent' },
 		});
-		expect(toolToAction(call('press', { key: 'Enter', reason: 'r' }), context)).toMatchObject({
+		expect(toolToAction(call('press', { key: 'Enter', reason: R }), context)).toMatchObject({
 			action: { kind: 'press', key: 'Enter' },
 		});
-		expect(toolToAction(call('press', { key: 'Tab', ref: 'e2', reason: 'r' }), context)).toMatchObject({
+		expect(toolToAction(call('press', { key: 'Tab', ref: 'e2', reason: R }), context)).toMatchObject({
 			action: { kind: 'press', key: 'Tab', target: { kind: 'ref', ref: 'e2' } },
 		});
-		expect(toolToAction(call('extract', { ref: 'e9', output: 'savingsBalance', reason: 'r' }), context)).toMatchObject({
+		expect(toolToAction(call('extract', { ref: 'e9', output: 'savingsBalance', reason: R }), context)).toMatchObject({
 			output: 'savingsBalance',
 			action: { kind: 'extract', target: { kind: 'ref', ref: 'e9' } },
 		});
 		expect(
-			toolToAction(call('dismiss_dialog', { match: 'cannot be undone', action: 'accept', reason: 'r' }), context),
+			toolToAction(call('dismiss_dialog', { match: 'cannot be undone', action: 'accept', reason: R }), context),
 		).toMatchObject({ action: { kind: 'dismiss_dialog', match: 'cannot be undone', action: 'accept' } });
 	});
 
 	it('maps wait to a checkpoint with a named frame and a bounded timeout', () => {
 		expect(
 			toolToAction(
-				call('wait', { condition: 'text_present', text: 'Member Inquiry', frame: 'content', reason: 'r' }),
+				call('wait', { condition: 'text_present', text: 'Member Inquiry', frame: 'content', reason: R }),
 				context,
 			),
 		).toMatchObject({
@@ -114,17 +118,13 @@ describe('toolToAction', () => {
 			},
 		});
 		expect(
-			toolToAction(
-				call('wait', { condition: 'title_contains', text: 'Inquiry', timeoutMs: 2000, reason: 'r' }),
-				context,
-			),
+			toolToAction(call('wait', { condition: 'title_contains', text: 'Inquiry', timeoutMs: 2000, reason: R }), context),
 		).toMatchObject({
 			action: { timeoutMs: 2000, until: { kind: 'title_matches', title: 'Inquiry', match: 'contains' } },
 		});
 		expect(
-			toolError(() =>
-				toolToAction(call('wait', { condition: 'text_present', text: 'hi {{pin}}', reason: 'r' }), context),
-			).code,
+			toolError(() => toolToAction(call('wait', { condition: 'text_present', text: 'hi {{pin}}', reason: R }), context))
+				.code,
 		).toBe('UNKNOWN_PLACEHOLDER');
 	});
 
@@ -136,13 +136,13 @@ describe('toolToAction', () => {
 					type: 'decimal',
 					description: 'Share Savings balance',
 					sensitive: true,
-					reason: 'r',
+					reason: R,
 				}),
 				context,
 			),
 		).toEqual({
 			kind: 'declare_output',
-			reason: 'r',
+			reason: R,
 			output: {
 				name: 'savingsBalance',
 				description: 'Share Savings balance',
@@ -155,19 +155,19 @@ describe('toolToAction', () => {
 				call('finish', {
 					summary: 'done',
 					finalCheckpoint: { kind: 'text', text: 'Member Inquiry', frame: 'content' },
-					reason: 'r',
+					reason: R,
 				}),
 				context,
 			),
 		).toEqual({
 			kind: 'finish',
-			reason: 'r',
+			reason: R,
 			summary: 'done',
 			finalCheckpoint: { kind: 'text', text: 'Member Inquiry', frame: ['content'] },
 		});
 		expect(
 			toolToAction(
-				call('finish', { summary: 'd', finalCheckpoint: { kind: 'element', ref: 'e4' }, reason: 'r' }),
+				call('finish', { summary: 'd', finalCheckpoint: { kind: 'element', ref: 'e4' }, reason: R }),
 				context,
 			),
 		).toMatchObject({ finalCheckpoint: { kind: 'element', ref: 'e4' } });
@@ -178,28 +178,48 @@ describe('toolToAction', () => {
 	});
 
 	it('rejects an unknown tool and invalid input as typed tool errors', () => {
-		expect(toolError(() => toolToAction(call('rm_rf', { reason: 'r' }), context))).toMatchObject({
+		expect(toolError(() => toolToAction(call('rm_rf', { reason: R }), context))).toMatchObject({
 			code: 'UNKNOWN_TOOL',
 			toolName: 'rm_rf',
 		});
 		expect(toolError(() => toolToAction(call('click', { ref: 'e1' }), context)).code).toBe('INVALID_INPUT');
-		expect(toolError(() => toolToAction(call('click', { ref: 'button 3', reason: 'r' }), context)).code).toBe(
+		expect(toolError(() => toolToAction(call('click', { ref: 'button 3', reason: R }), context)).code).toBe(
 			'INVALID_INPUT',
 		);
-		expect(toolError(() => toolToAction(call('click', { ref: 'e1', reason: 'r', force: true }), context)).code).toBe(
+		expect(toolError(() => toolToAction(call('click', { ref: 'e1', reason: R, force: true }), context)).code).toBe(
 			'INVALID_INPUT',
 		);
 		expect(
 			toolError(() =>
-				toolToAction(call('finish', { summary: 's', finalCheckpoint: { kind: 'text' }, reason: 'r' }), context),
+				toolToAction(call('finish', { summary: 's', finalCheckpoint: { kind: 'text' }, reason: R }), context),
 			).code,
 		).toBe('INVALID_INPUT');
 		expect(toolError(() => toolToAction({ id: 'x', name: 'click', input: 'e1' }, context)).code).toBe('INVALID_INPUT');
 	});
 
 	it('never echoes a sensitive input value in an error message', () => {
-		const error = toolError(() => toolToAction(call('fill', { ref: 'e1', value: 12345, reason: 'r' }), context));
+		const error = toolError(() => toolToAction(call('fill', { ref: 'e1', value: 12345, reason: R }), context));
 		expect(error.code).toBe('INVALID_INPUT');
 		expect(error.message).not.toContain('12345');
+	});
+
+	it('rejects a bare-label reason with a tool error that asks for a justification (the run continues)', () => {
+		for (const short of ['Sign on', 'Password', '   Password    ']) {
+			const error = toolError(() => toolToAction(call('click', { ref: 'e7', reason: short }), context));
+			expect(error.code).toBe('INVALID_INPUT');
+			expect(error.message).toContain(`reason: too short`);
+			expect(error.message).toContain(`at least ${MIN_REASON_LENGTH} characters`);
+			expect(error.message).toContain('references what you observed');
+		}
+		expect(
+			toolToAction(
+				call('fill', {
+					ref: 'e2',
+					value: '{{credential.password}}',
+					reason: "The login form's Password field is empty.",
+				}),
+				context,
+			),
+		).toMatchObject({ kind: 'action', reason: "The login form's Password field is empty." });
 	});
 });

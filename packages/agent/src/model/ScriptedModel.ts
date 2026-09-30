@@ -102,7 +102,14 @@ export class ScriptedModel implements ModelClient {
 	#play(request: ModelRequest): ModelTurn {
 		if (this.done) {
 			if (this.#script.onExhausted === 'end_turn') {
-				return { toolCalls: [], text: 'script exhausted', stopReason: 'end_turn', usage: NO_USAGE };
+				this.#calls += 1;
+				return {
+					toolCalls: [],
+					text: 'script exhausted',
+					stopReason: 'end_turn',
+					usage: NO_USAGE,
+					response: this.#response('end_turn'),
+				};
 			}
 			if (this.#script.onExhausted === 'error' || this.#stepStarts[this.#script.loopFrom] === undefined) {
 				throw new ScriptError('SCRIPT_EXHAUSTED', `model script ${this.#script.name} has no step left`);
@@ -121,7 +128,13 @@ export class ScriptedModel implements ModelClient {
 			text: step.text ?? '',
 			stopReason: 'tool_use',
 			usage: NO_USAGE,
+			response: this.#response('tool_use'),
 		};
+	}
+
+	/** Synthetic response metadata: `scripted-<n>` ids, the script's model id, zero usage (see `NO_USAGE`). */
+	#response(stopReason: string): ModelTurn['response'] {
+		return { id: `scripted-${this.#calls}`, model: this.modelId, stopReason };
 	}
 
 	#resolve(target: ScriptTarget, request: ModelRequest): string {

@@ -13,3 +13,4 @@ One decision per file, created with `/define-adr`. `REPORT.md` cites these inste
 | [0007](./0007-surface-abstraction-a11y-first.md) | Surface abstraction, accessibility tree first | Accepted | 4 | R1.3, R7.1, R2.3, R3.2, R5.2 |
 | [0008](./0008-multi-tenant-reuse-base-overrides-and-drift.md) | Multi-tenant reuse: per-tenant profiles, base artifact + overrides, drift from rung fallback | Accepted | 4 | R7.2, R3.2, R3.4, S5, D2 |
 | [0009](./0009-redaction-model-and-evidence-sinks.md) | Redaction model and evidence sinks | Accepted | 6 | R4.3, R5.1, R5.2, R6.1 |
+| [0010](./0010-locked-window-bounded-takeover-console-key.md) | Locked headed window, bounded takeover and one-time operator console key (extends 0006) | Accepted | 5, 6 | R6.1, R6.2, R6.3, R6.4, R4.1, R4.2, R4.3 |

@@ -8,13 +8,20 @@ export interface OperatorConfig {
 	readonly controlToken: string;
 	/** The console's port (`IDP_OPERATOR_PORT`, default 4030; 0 = ephemeral). */
 	readonly port: number;
+	/**
+	 * The one-time console login key (`IDP_OPERATOR_KEY`, 32–128 of `A-Z a-z 0-9 _ -`): a separate random value,
+	 * never the control token. `idp operator` generates it; `GET /login?k=<key>` exchanges it for a session cookie.
+	 */
+	readonly loginKey: string;
 }
+
+const LOGIN_KEY = /^[A-Za-z0-9_-]{32,128}$/;
 
 /** The console port when `IDP_OPERATOR_PORT` is unset. */
 export const DEFAULT_OPERATOR_PORT = 4030;
 
 /**
- * Reads `IDP_CONTROL_URL`, `IDP_CONTROL_TOKEN` and `IDP_OPERATOR_PORT`. Throws `OperatorConfigError` naming the
+ * Reads `IDP_CONTROL_URL`, `IDP_CONTROL_TOKEN`, `IDP_OPERATOR_KEY` and `IDP_OPERATOR_PORT`. Throws `OperatorConfigError` naming the
  * variable (never its value) when one is missing or invalid.
  */
 export function loadOperatorConfig(env: Readonly<Record<string, string | undefined>>): OperatorConfig {
@@ -33,6 +40,17 @@ export function loadOperatorConfig(env: Readonly<Record<string, string | undefin
 	const controlToken = env['IDP_CONTROL_TOKEN']?.trim() ?? '';
 	if (controlToken === '') throw new OperatorConfigError('IDP_CONTROL_TOKEN', 'is required (the session bearer token)');
 
+	const loginKey = env['IDP_OPERATOR_KEY']?.trim() ?? '';
+	if (!LOGIN_KEY.test(loginKey)) {
+		throw new OperatorConfigError(
+			'IDP_OPERATOR_KEY',
+			'is required: 32–128 characters of A-Z a-z 0-9 _ - (the console login key)',
+		);
+	}
+	if (loginKey === controlToken) {
+		throw new OperatorConfigError('IDP_OPERATOR_KEY', 'must not be the control token');
+	}
+
 	const rawPort = env['IDP_OPERATOR_PORT']?.trim() ?? '';
 	let port = DEFAULT_OPERATOR_PORT;
 	if (rawPort !== '') {
@@ -41,5 +59,5 @@ export function loadOperatorConfig(env: Readonly<Record<string, string | undefin
 			throw new OperatorConfigError('IDP_OPERATOR_PORT', 'must be an integer from 0 to 65535 (0 = ephemeral)');
 		}
 	}
-	return { controlUrl: rawUrl, controlToken, port };
+	return { controlUrl: rawUrl, controlToken, port, loginKey };
 }

@@ -1,17 +1,17 @@
 {
   "kind": "failure",
-  "runId": "replay-20260930T034020-b613",
+  "runId": "replay-20260930T191926-49aa",
   "artifact": {
     "id": "member-lookup",
     "version": "1.0.0",
-    "contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+    "contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
   },
   "reason": "app_error",
   "step": {
     "index": 3,
     "id": "s04-click-sign-on"
   },
-  "expected": "s04-click-sign-on to complete without a app_error condition",
+  "expected": "s04-click-sign-on to complete with no app_error condition",
   "observed": "app_error (artifact): matched \"Server Error\"",
   "evidence": [
     {
@@ -31,7 +31,8 @@
       "localOnly": false
     }
   ],
-  "interventionRequestId": "ir-20260930T034021-b633"
+  "interventionRequestId": "ir-20260930T191928-4403"
 }
-failure: app_error at step 4 (s04-click-sign-on) (member-lookup@1.0.0): expected s04-click-sign-on to complete without a app_error condition; observed app_error (artifact): matched "Server Error"
-run dir: /private/tmp/claude-501/-Users-mos-Workspaces-interface-demo-project/c1f8d9fb-1c07-4cc6-8b66-fc0647e23a3d/scratchpad/replays2/fault/replay-20260930T034020-b613
+failure: app_error at step 4 (s04-click-sign-on) (member-lookup@1.0.0): expected s04-click-sign-on to complete with no app_error condition; observed app_error (artifact): matched "Server Error"
+run dir: .runs/evidence/replay-member-lookup-injected-failure/runs/replay-20260930T191926-49aa
+exit: 1

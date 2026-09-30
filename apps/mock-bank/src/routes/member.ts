@@ -1,7 +1,8 @@
 import { findMember } from '../data/members.js';
 import { sendHtml } from '../http/respond.js';
 import { memberDetailScreen, type DetailDialog } from '../screens/memberDetail.js';
-import { memberSearchScreen } from '../screens/memberSearch.js';
+import { accountSummaryScreen } from '../screens/accountSummary.js';
+import { LATE_RENDER_DEFAULT_MS, memberSearchScreen } from '../screens/memberSearch.js';
 import type { ContentContext, Route } from './Route.js';
 
 const MEMBER_NUMBER = /^\d{5}$/;
@@ -14,7 +15,15 @@ export const memberRoutes: readonly Route[] = [
 		path: '/member/search',
 		handle: ({ res, url, app }) => {
 			const withoutButton = app.faults.take('control_missing', url.pathname) !== undefined;
-			sendHtml(res, 200, memberSearchScreen(app.tenant, { withoutButton }));
+			const late = withoutButton ? undefined : app.faults.take('late_render', url.pathname);
+			sendHtml(
+				res,
+				200,
+				memberSearchScreen(app.tenant, {
+					withoutButton,
+					...(late === undefined ? {} : { lateButtonMs: late.delayMs ?? LATE_RENDER_DEFAULT_MS }),
+				}),
+			);
 		},
 	},
 	{ kind: 'content', method: 'GET', path: '/member/detail', handle: memberDetail },
@@ -28,6 +37,10 @@ function memberDetail({ res, url, app }: ContentContext): void {
 
 	if (app.faults.take('validation_error', path) || !MEMBER_NUMBER.test(value)) {
 		research('invalidMemberNumber');
+		return;
+	}
+	if (app.faults.take('wrong_screen', path)) {
+		sendHtml(res, 200, accountSummaryScreen());
 		return;
 	}
 	const member = app.faults.take('member_not_found', path) ? undefined : findMember(value);

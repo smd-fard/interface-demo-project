@@ -274,6 +274,95 @@ describe('session: live handoff on the same browser (AC10, AC11)', () => {
 		expect(session.recordedHumanActions()).toEqual([]);
 	});
 
+	it('attended, paused awaiting approval: a person clicking Confirm in the window is blocked; the run completes after approve (FR1)', async () => {
+		const session = await open({ kind: 'capability', id: 'open-sub-account', version: '1.0.0' });
+		const client = new ControlClient({ url: session.controlUrl ?? '', token: session.controlToken ?? '' });
+		const { surface } = session;
+		const actor = 'replay' as const;
+		const operator = new SimulatedOperator(session.browser);
+		await signOn(surface);
+		// While the automation holds the lease, a person typing into the window is blocked too.
+		await operator.type(memberInput, '99999');
+		await operator.click(searchButton);
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(await surface.check(textIn('Member Search'), {}, 0)).toEqual({ kind: 'held' });
+		expect(await surface.check(textIn('Automation is in control'), {}, 2_000)).toEqual({ kind: 'held' });
+		await surface.act({ kind: 'fill', actor, target: t(memberInput), value: '12345', sensitive: true });
+		await surface.act({ kind: 'click', actor, target: t(searchButton) });
+		await surface.act({ kind: 'click', actor, target: t(subAccount('s07-click-open-sub-account')) });
+		await surface.act({
+			kind: 'select',
+			actor,
+			target: t(subAccount('s08-select-product')),
+			option: 'Vacation Savings',
+		});
+		await surface.act({
+			kind: 'fill',
+			actor,
+			target: t(subAccount('s09-fill-initial-deposit')),
+			value: '25.00',
+			sensitive: false,
+		});
+		await surface.act({
+			kind: 'fill',
+			actor,
+			target: t(subAccount('s10-fill-nickname')),
+			value: 'Beach fund',
+			sensitive: true,
+		});
+		await surface.act({ kind: 'click', actor, target: t(subAccount('s11-click-continue')) });
+		expect(await surface.check(textIn('Review Sub-Account'), {}, 10_000)).toEqual({ kind: 'held' });
+
+		const confirmTarget = subAccount('s12-click-confirm');
+		const approval = session.requestApproval({ index: 11, stepId: 's12-click-confirm', description: 'Click Confirm' });
+		const request = await until(async () => (await client.interventions())[0], 'the approval request');
+		expect(session.lease.state()).toBe('PAUSED');
+
+		// A person at the (headed) window clicks the irreversible Confirm directly: blocked before the page sees it.
+		await operator.click(confirmTarget);
+		await operator.press('Enter');
+		await new Promise((resolve) => setTimeout(resolve, 500));
+		expect(surface.pendingDialog()).toBeNull();
+		expect(await surface.check(textIn('Review Sub-Account'), {}, 0)).toEqual({ kind: 'held' });
+		expect(await surface.check(textIn('Sub-Account Opened'), {}, 0)).toMatchObject({ kind: 'not_held' });
+		expect(await surface.check(textIn('Automation is in control'), {}, 2_000)).toEqual({ kind: 'held' });
+		expect(session.recordedHumanActions()).toEqual([]);
+
+		await client.approve(request.id, 'ops-1');
+		const outcome = await approval;
+		if (outcome.kind !== 'granted') throw new Error(`expected granted, got ${outcome.kind}`);
+		await surface.act({
+			kind: 'click',
+			actor,
+			stepId: 's12-click-confirm',
+			target: t(confirmTarget),
+			approvalGrant: outcome.grant,
+		});
+		expect(await surface.check(textIn('Sub-Account Opened'), {}, 10_000)).toEqual({ kind: 'held' });
+	});
+
+	it('a claimed takeover outlives the claim timeout; it is bounded by the takeover timeout (FR3)', async () => {
+		const session = await open({ kind: 'capability', id: 'member-lookup', version: '1.0.0' });
+		const client = new ControlClient({ url: session.controlUrl ?? '', token: session.controlToken ?? '' });
+		await signOn(session.surface);
+		const step = { index: 4, description: 'Fill the Member #', risk: 'reversible' } as const;
+		const reason = { code: 'target_unresolved', text: 'stuck' };
+
+		const held = session.escalate(reason, step, { timeoutMs: 300, takeoverTimeoutMs: 10_000 });
+		const first = await until(async () => (await client.interventions())[0], 'the first request');
+		await client.claim(first.id, 'ops-1');
+		await new Promise((resolve) => setTimeout(resolve, 600));
+		expect(session.lease.state()).toBe('HUMAN');
+		await client.resume('ops-1');
+		expect(await held).toMatchObject({ kind: 'resumed', requestId: first.id });
+		await session.lease.reacquire();
+
+		const unclaimed = await session.escalate(reason, step, { timeoutMs: 100 });
+		expect(unclaimed).toMatchObject({ kind: 'timeout', stage: 'unclaimed' });
+		expect((await client.interventions()).map((request) => request.id)).toEqual([first.id]);
+		await expect(client.claim(unclaimed.requestId, 'ops-1')).rejects.toMatchObject({ status: 409 });
+	});
+
 	it('unattended: escalate raises and persists the request and returns at once; no control server', async () => {
 		const session = await open({ kind: 'capability', id: 'member-lookup', version: '1.0.0' }, false);
 		expect(session.controlUrl).toBeNull();

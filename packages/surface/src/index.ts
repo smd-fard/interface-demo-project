@@ -44,6 +44,7 @@ export { type GuardedActHooks } from './guard/PolicyGuardedSurface.js';
 
 // the human-action recorder (mediated control, R6.2)
 export {
+	DEFAULT_BLOCK_MESSAGE,
 	HumanActionRecorder,
 	type HumanActionRecorderOptions,
 	type RecordListener,

@@ -21,6 +21,11 @@ export interface OperatorServerOptions {
 	readonly control: OperatorControl;
 	/** 0 = an ephemeral port (default). The console always binds to 127.0.0.1. */
 	readonly port?: number;
+	/**
+	 * The one-time login key (never the control token): `GET /login?k=<key>` exchanges it, once, for an
+	 * HttpOnly SameSite=Strict session cookie that every other route requires.
+	 */
+	readonly loginKey: string;
 	/** Receives unexpected errors (answered 500 without detail). When omitted they are kept in `errors`. */
 	readonly onError?: (error: unknown) => void;
 }
@@ -29,6 +34,23 @@ const HOST = '127.0.0.1';
 const HANDLE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
 const EVIDENCE_TYPES: ReadonlySet<string> = new Set(['image/png', 'application/json; charset=utf-8']);
+/** The console session cookie (HttpOnly, SameSite=Strict, host-only, path /). */
+export const SESSION_COOKIE = 'idp_console';
+
+function sameSecret(presented: string, expected: string): boolean {
+	const a = Buffer.from(presented);
+	const b = Buffer.from(expected);
+	return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** The value of one cookie in a `Cookie` header, or undefined. */
+function cookieValue(header: string | undefined, name: string): string | undefined {
+	for (const part of (header ?? '').split(';')) {
+		const [key, ...value] = part.trim().split('=');
+		if (key === name) return value.join('=');
+	}
+	return undefined;
+}
 
 type Handler = (request: IncomingMessage, response: ServerResponse, param: string) => Promise<void>;
 
@@ -76,15 +98,21 @@ function readFailure(error: ControlApiError, notFound: string): OperatorHttpErro
  * masked screenshot / redacted snapshot), `POST /interventions/:id/{claim,approve,reject}`, `POST /resume`,
  * `POST /abort` (form posts → 303 back), `GET /api/state` (JSON for polling).
  *
- * Security: a foreign `Host` header → 421 (DNS rebinding); every POST needs a same-origin `Origin` /
- * `Sec-Fetch-Site` (when sent) and the per-process form token embedded in the pages (→ 403 `CSRF_REJECTED`);
- * pages carry a CSP that allows only the nonce'd inline script and style.
+ * Security: a foreign `Host` header → 421 (DNS rebinding). Authentication: `GET /login?k=<loginKey>` (the URL
+ * `idp operator` prints) exchanges the one-time login key for a random session cookie (HttpOnly,
+ * SameSite=Strict) and redirects to `/`; the key then stops working. Every other route needs that cookie
+ * (→ 401 `LOGIN_REQUIRED`), so another local process cannot drive the console without the key. Every POST
+ * also needs a same-origin `Origin` / `Sec-Fetch-Site` (when sent) and the per-process form token embedded in
+ * the pages (→ 403 `CSRF_REJECTED`); pages carry a CSP that allows only the nonce'd inline script and style.
  */
 export class OperatorServer {
 	/** Unexpected errors, when no `onError` is given. */
 	readonly errors: unknown[] = [];
 	private readonly routes: readonly Route[];
 	private readonly formToken = randomBytes(32).toString('hex');
+	/** Session ids issued by `/login`. */
+	private readonly sessions = new Set<string>();
+	private loginKeyUsed = false;
 
 	private constructor(
 		private readonly server: Server,
@@ -159,7 +187,20 @@ export class OperatorServer {
 			if (!this.allowedHosts().includes(request.headers.host ?? '')) {
 				throw new OperatorHttpError(421, 'HOST_REJECTED', 'this console answers on 127.0.0.1 only');
 			}
-			const pathname = new URL(request.url ?? '/', this.url).pathname;
+			const url = new URL(request.url ?? '/', this.url);
+			const pathname = url.pathname;
+			if (pathname === '/login') {
+				if (request.method !== 'GET') throw new OperatorHttpError(405, 'METHOD_NOT_ALLOWED', 'method not allowed here');
+				this.login(response, url.searchParams.get('k') ?? '');
+				return;
+			}
+			if (!this.authenticated(request)) {
+				throw new OperatorHttpError(
+					401,
+					'LOGIN_REQUIRED',
+					'Open the console through the login URL printed by `idp operator` (it sets the session cookie).',
+				);
+			}
 			for (const route of this.routes) {
 				const match = route.pattern.exec(pathname);
 				if (match === null) continue;
@@ -172,6 +213,37 @@ export class OperatorServer {
 		} catch (error) {
 			this.fail(response, error);
 		}
+	}
+
+	private authenticated(request: IncomingMessage): boolean {
+		const presented = cookieValue(request.headers.cookie, SESSION_COOKIE);
+		if (presented === undefined) return false;
+		for (const session of this.sessions) if (sameSecret(presented, session)) return true;
+		return false;
+	}
+
+	/** Exchanges the one-time login key for a session cookie and redirects to the list. */
+	private login(response: ServerResponse, key: string): void {
+		if (!sameSecret(key, this.options.loginKey)) {
+			throw new OperatorHttpError(401, 'LOGIN_REJECTED', 'The login key is missing or wrong.');
+		}
+		if (this.loginKeyUsed) {
+			throw new OperatorHttpError(
+				401,
+				'LOGIN_KEY_USED',
+				'This login URL was already used: restart `idp operator` for a new one.',
+			);
+		}
+		this.loginKeyUsed = true;
+		const session = randomBytes(32).toString('hex');
+		this.sessions.add(session);
+		response.writeHead(303, {
+			...BASE_HEADERS,
+			location: '/',
+			'set-cookie': `${SESSION_COOKIE}=${session}; HttpOnly; SameSite=Strict; Path=/`,
+			'content-length': 0,
+		});
+		response.end();
 	}
 
 	private fail(response: ServerResponse, error: unknown): void {

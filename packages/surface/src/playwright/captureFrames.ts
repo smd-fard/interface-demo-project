@@ -1,8 +1,9 @@
-import type { Frame, Page } from 'playwright';
-import { normalizeText } from '../internal/normalizeText.js';
+import { errors, type Frame, type Page } from 'playwright';
+import { isGoneFrameError } from '../internal/isGoneFrameError.js';
 import { framePathOf } from '../locators/FrameResolver.js';
 import type { FrameInfo } from '../port/Observation.js';
 import type { FrameSnapshot } from '../snapshot/a11ySnapshot.js';
+import { readFrameText, titleOrEmpty } from './frameReads.js';
 import type { NavigationTracker } from './NavigationTracker.js';
 
 /** Bounds for one frame capture: text budget, per-frame snapshot timeout and whether in-page evaluation is allowed. */
@@ -12,6 +13,19 @@ export interface CaptureFramesOptions {
 	readonly snapshotTimeoutMs: number;
 	/** Skip every in-page evaluation (a native dialog blocks the page's script). */
 	readonly domAccess: boolean;
+}
+
+/**
+ * A frame's aria snapshot, or `null` ("unavailable" in the observation) when it timed out or the frame went away
+ * while it was taken. Any other error is thrown.
+ */
+async function ariaSnapshotOrNull(frame: Frame, timeoutMs: number): Promise<string | null> {
+	try {
+		return await frame.locator(':root').ariaSnapshot({ timeout: timeoutMs });
+	} catch (error) {
+		if (error instanceof errors.TimeoutError || isGoneFrameError(error)) return null;
+		throw error;
+	}
 }
 
 /** Frames in tree pre-order: top document first, each frame followed by its descendants. */
@@ -40,8 +54,9 @@ async function renderedChildPaths(frame: Frame): Promise<string[][]> {
 				};
 			});
 			placed.push({ path: [...framePathOf(child)], index: rendered ? index : Number.MAX_SAFE_INTEGER });
-		} catch {
-			// detached while we looked: it is simply not part of this observation
+		} catch (error) {
+			// Detached (or navigated) while we looked: it is simply not part of this observation.
+			if (!isGoneFrameError(error)) throw error;
 		}
 	}
 	return placed.sort((a, b) => a.index - b.index).map((entry) => entry.path);
@@ -65,12 +80,11 @@ export async function captureFrames(
 		let text = '';
 		let childPaths: string[][] = [];
 		if (options.domAccess) {
-			yaml = await frame
-				.locator(':root')
-				.ariaSnapshot({ timeout: options.snapshotTimeoutMs })
-				.catch(() => null);
-			title = await frame.title().catch(() => '');
-			text = normalizeText(await frame.evaluate(() => (document.body ? document.body.innerText : '')).catch(() => ''));
+			yaml = await ariaSnapshotOrNull(frame, options.snapshotTimeoutMs);
+			title = await titleOrEmpty(frame);
+			const read = await readFrameText(frame);
+			// A frame that went away mid-read contributes no text to this observation (it is reported loading).
+			text = read.kind === 'text' ? read.text : '';
 			childPaths = await renderedChildPaths(frame);
 		}
 		snapshots.push({ path, yaml, childPaths });

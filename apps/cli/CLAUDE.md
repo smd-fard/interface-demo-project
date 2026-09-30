@@ -59,9 +59,11 @@ src/
   cli/                    CliContext, CommandModule, exitCodes (EXIT, exitCodeFor)
   config/                 loadConfig, expandEnvTokens, mockBankOrigin, resolveProfilePath, loadDotEnv, EnvCredentialProvider
   commands/               discover (the only @idp/agent import), replay, catalog, operator, controlPort
-  replay/                 loadArtifactFile, runReplay (session + replay engine; shared by replay and discover)
+  replay/                 loadArtifactFile, runReplay (session + replay engine; shared by replay and discover),
+                          attendedWarning (--attended without --headed: approval/abort only, no takeover)
   catalog/                readCatalog (hash status per artifact)
-  operator/               writeControlFiles (0600 token), findLatestControl
+  operator/               writeControlFiles (0600 token), findLatestControl, writeConsoleKey (0600 one-time
+                          console login key next to the token; never the token itself)
   output/                 Printer (the only stdout/stderr writer), printResult (JSON + summary)
   paths/                  findRepoRoot, invocationDir (INIT_CWD), resolveRunsRoot
   errors/                 CliUsageError (64), ConfigError, ArtifactFileError, OperatorLaunchError

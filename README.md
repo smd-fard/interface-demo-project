@@ -104,7 +104,10 @@ pnpm idp discover --model scripted:packages/agent/scripts/member-lookup.script.j
 Discovery compiles the run into an artifact, replays it once with the example inputs (`--verify-replay`, on by
 default) and saves it only if that replay succeeds. Example values in the goal are placeholderized; the artifact
 stores `{{memberId}}`, never `12345`. Each `--input` becomes a plain `string` param with no pattern; tighten it
-in review (the edit changes the content hash, so re-hash).
+in review (the edit changes the content hash, so re-hash). `--output` types are `string`, `decimal:<scale>` and
+`integer`; `boolean` is refused (the extract step has no boolean parse yet). Add `--attended --headed` to let an
+operator step in when the model gets stuck: discovery then prints the control URL like replay does (step 5).
+Every model turn is logged with its reason and the API's response id, stop reason and token usage.
 
 **3. Replay** it deterministically (no LLM):
 
@@ -129,6 +132,8 @@ armed at start with `MOCKBANK_FAULTS` or at run time over its admin API:
 ```bash
 MOCKBANK_FAULTS=app_error pnpm mock-bank        # replay → failure app_error with evidence, exit 1
 MOCKBANK_FAULTS=known_dialog pnpm mock-bank     # replay dismisses the known dialog → success (1 recovery), exit 0
+MOCKBANK_FAULTS=wrong_screen pnpm mock-bank     # Search lands on the wrong screen → failure checkpoint_failed, exit 1
+MOCKBANK_FAULTS=late_render pnpm mock-bank      # the Search button renders 1.5 s late → the ladder waits → success
 curl -X POST -H 'content-type: application/json' -d '{"code":"session_timeout"}' \
   http://127.0.0.1:4010/__admin/faults          # replay signs on again → success (1 recovery), exit 0
 curl -X DELETE http://127.0.0.1:4010/__admin/faults   # disarm all
@@ -145,15 +150,20 @@ pnpm idp replay --artifact artifacts/open-sub-account.json \
   --attended --headed
 ```
 
-It prints the control URL and the token file, and pauses with an intervention request at the Confirm step.
-In terminal 3:
+It prints the control URL and the token file (never the token), and pauses with an **approval** request at the
+Confirm step. While automation or a pending request holds the session, the headed window is locked: a person's
+clicks and keys are blocked and a banner says why. In terminal 3:
 
 ```bash
-pnpm idp operator                    # console at http://127.0.0.1:4030 (latest attended session)
+pnpm idp operator                    # prints a one-time login URL: http://127.0.0.1:4030/login?k=…
 ```
 
-In the console, take control or approve the step; the same live session resumes and returns
-`success` with the confirmation number (`SA-nnnnnn`). Captured runs: approval in
+Open the printed login URL (the key works once and sets a session cookie; every other route needs it). The
+console lists the request: **Approve** or **Reject** an approval request; for a **takeover** request (a hard
+failure, e.g. `MOCKBANK_FAULTS=app_error:once@/member/detail` with `member-lookup`) click **Take control**, work in
+the headed window (every gesture is policy-checked and recorded), then **Resume**. Either way the same live session
+continues and returns `success` (here with the confirmation number `SA-nnnnnn`). `--attended` without `--headed`
+warns that only approve, reject and abort are possible. Captured runs: approval in
 [`evidence/handoff-open-sub-account/`](evidence/handoff-open-sub-account/), takeover with recorded human
 actions in [`evidence/handoff-member-lookup-takeover/`](evidence/handoff-member-lookup-takeover/).
 
@@ -167,7 +177,7 @@ are copied into [`evidence/`](evidence/README.md).
 | ---- | ----------------------------------------------------------------------------------------------------- |
 | `0`  | success / goal met (discover: and verified and saved; catalog: listed and verified)                   |
 | `3`  | business outcome (e.g. `member_not_found`)                                                            |
-| `1`  | failure or error (step failure, config/credential error, missing API key, verify-replay failed, catalog mismatch with `--verify`) |
+| `1`  | failure or error (step failure, config/credential error, missing API key, model API error, verify-replay failed, catalog mismatch with `--verify`) |
 | `4`  | discovery stopped without meeting the goal                                                            |
 | `64` | usage error                                                                                           |
 

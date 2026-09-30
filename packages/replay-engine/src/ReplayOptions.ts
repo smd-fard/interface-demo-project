@@ -18,6 +18,11 @@ export interface ReplayOptions {
 	readonly maxReauthPerRun: number;
 	/** How long an attended intervention (an approval, or a takeover after a hard failure) waits for an operator (step 34). */
 	readonly approvalTimeoutMs: number;
+	/**
+	 * Once an operator has claimed a takeover, how long they may hold control before the run fails `timeout`
+	 * (the wait for the claim itself is bounded by `approvalTimeoutMs`). Default 30 minutes.
+	 */
+	readonly takeoverTimeoutMs: number;
 }
 
 /** Overrides for `ReplayOptions`; anything omitted takes its default. */
@@ -35,6 +40,7 @@ export const DEFAULT_REPLAY_OPTIONS: ReplayOptions = Object.freeze({
 	maxDialogDismissPerStep: 1,
 	maxReauthPerRun: 1,
 	approvalTimeoutMs: 300_000,
+	takeoverTimeoutMs: 1_800_000,
 });
 
 function bounded(option: string, value: number, min: number, max: number): number {
@@ -68,5 +74,6 @@ export function resolveReplayOptions(input: ReplayOptionsInput = {}): ReplayOpti
 		),
 		maxReauthPerRun: bounded('maxReauthPerRun', input.maxReauthPerRun ?? d.maxReauthPerRun, 0, 3),
 		approvalTimeoutMs: bounded('approvalTimeoutMs', input.approvalTimeoutMs ?? d.approvalTimeoutMs, 1, 3_600_000),
+		takeoverTimeoutMs: bounded('takeoverTimeoutMs', input.takeoverTimeoutMs ?? d.takeoverTimeoutMs, 1, 14_400_000),
 	};
 }

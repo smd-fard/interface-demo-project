@@ -1,3 +1,4 @@
+import type { RiskClass } from '@idp/artifact-schema';
 import type { NavigationInfo } from './Observation.js';
 import type { PendingDialog } from './PendingDialog.js';
 import type { Resolution } from './Resolution.js';
@@ -24,4 +25,11 @@ export interface ActOutcome {
 	 * accepted as part of the approved action. Never set without a grant.
 	 */
 	readonly acceptedDialog?: PendingDialog;
+	/**
+	 * The action's effective risk as the policy guard classified it before acting: the max of the registry risk,
+	 * the declared step risk and the irreversible rules (control name, route, destination). Set by
+	 * `PolicyGuardedSurface`; absent from an unguarded surface. Replay's recovery guard uses it (never retry
+	 * across an irreversible step, even one the artifact declared reversible).
+	 */
+	readonly risk?: RiskClass;
 }

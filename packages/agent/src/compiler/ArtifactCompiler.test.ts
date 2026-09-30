@@ -219,6 +219,19 @@ describe('ArtifactCompiler', () => {
 		await expect(compile(withSteps(steps))).rejects.toBeInstanceOf(UncheckpointableStepError);
 	});
 
+	// review-fixes FR7: an extract has no boolean parse, so a boolean output compiled to a text parse and
+	// always failed output validation at replay (output_invalid). The compiler now refuses it up front.
+	it('refuses a boolean output, which no extract parse can produce', async () => {
+		const outputs = trace.outputs.map((output) =>
+			output.name === 'memberName' ? { ...output, type: { kind: 'boolean' as const } } : output,
+		);
+		await expect(compile(trace, { outputs })).rejects.toMatchObject({
+			constructor: ArtifactCompileError,
+			code: 'UNSUPPORTED_OUTPUT_TYPE',
+			message: expect.stringContaining('memberName'),
+		});
+	});
+
 	it('refuses a trace that did not meet its goal', async () => {
 		await expect(compile({ ...trace, finish: null })).rejects.toMatchObject({
 			constructor: ArtifactCompileError,

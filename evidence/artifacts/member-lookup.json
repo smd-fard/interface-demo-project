@@ -14,8 +14,8 @@
 		"appVersion": "CoreOne 7.4"
 	},
 	"provenance": {
-		"discoveryRunId": "discovery-20260930T033842-7774",
-		"compiledAt": "2026-09-30T03:38:58.858Z",
+		"discoveryRunId": "discovery-20260930T191747-2ede",
+		"compiledAt": "2026-09-30T19:18:04.947Z",
 		"compilerVersion": "0.1.0",
 		"model": "anthropic:claude-sonnet-5-5",
 		"humanStepIds": []
@@ -500,5 +500,5 @@
 			}
 		}
 	],
-	"contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+	"contentHash": "sha256:14d2bdb29afe4f6d1db74902e3a5121aaa3c8b149f0ec74dffffe7931e8a9c66"
 }

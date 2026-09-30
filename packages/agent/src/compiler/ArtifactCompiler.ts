@@ -62,6 +62,12 @@ export interface CompileOptions {
 const SCREEN_CHANGING: ReadonlySet<ActionKind> = new Set(SCREEN_CHANGING_KINDS);
 const PLACEHOLDER_HASH = `sha256:${'0'.repeat(64)}`;
 const MAX_PROSE = 2000;
+/**
+ * Output types an extract parse can produce: `decimal` and `integer` have their own parse, and `text` yields a
+ * string that `string`, `enum` and `date` validate. There is no boolean parse, so a `boolean` output would always
+ * fail output validation at replay (`output_invalid`): the compiler refuses it instead.
+ */
+const EXTRACTABLE_OUTPUT_TYPES: ReadonlySet<string> = new Set(['string', 'integer', 'decimal', 'enum', 'date']);
 
 /** A trace step that survived filtering, with its compiled target. */
 interface Kept {
@@ -145,6 +151,13 @@ export class ArtifactCompiler {
 		const outputs: OutputSpec[] = outputsDeclared
 			.filter((output) => extractedNames.has(output.name))
 			.map((output) => ({ ...output }));
+		const unparsable = outputs.filter((output) => !EXTRACTABLE_OUTPUT_TYPES.has(output.type.kind));
+		if (unparsable.length > 0) {
+			throw new ArtifactCompileError(
+				'UNSUPPORTED_OUTPUT_TYPE',
+				`no extract parse produces a ${unparsable.map((output) => `${output.type.kind} (output ${output.name})`).join(', ')}; declare it as a string`,
+			);
+		}
 		const outputTypes = new Map(outputs.map((output) => [output.name, output.type.kind]));
 		if (kept.length === 0) throw new ArtifactCompileError('NO_STEPS', 'no performed step is left to compile');
 

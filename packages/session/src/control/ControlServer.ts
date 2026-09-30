@@ -37,8 +37,9 @@ class HttpError extends Error {
 		readonly status: number,
 		readonly code: string,
 		message: string,
+		options?: ErrorOptions,
 	) {
-		super(message);
+		super(message, options);
 		this.name = 'HttpError';
 	}
 }
@@ -89,8 +90,12 @@ async function readOperator(request: IncomingMessage): Promise<OperatorActor> {
 	let body: unknown;
 	try {
 		body = JSON.parse(text);
-	} catch {
-		throw new HttpError(400, 'BAD_REQUEST', 'the body must be JSON: { "operator": "<handle>" }');
+	} catch (error) {
+		// JSON.parse throws only SyntaxError for bad input; anything else is unexpected and propagates (→ 500).
+		if (!(error instanceof SyntaxError)) throw error;
+		throw new HttpError(400, 'BAD_REQUEST', 'the body must be JSON: { "operator": "<handle>" }', {
+			cause: error,
+		});
 	}
 	if (typeof body !== 'object' || body === null || Array.isArray(body)) {
 		throw new HttpError(400, 'BAD_REQUEST', 'the body must be an object: { "operator": "<handle>" }');

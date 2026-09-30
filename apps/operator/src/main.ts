@@ -14,8 +14,9 @@ function describe(error: unknown): string {
 }
 
 /**
- * Process entry: reads the environment, starts the console on 127.0.0.1, prints `operator console at <url>`
- * (never the token), and stops on SIGTERM/SIGINT. A missing or invalid configuration exits 64.
+ * Process entry: reads the environment, starts the console on 127.0.0.1, prints
+ * `operator console at <url>/login?k=<console key>` (the one-time login URL; never the control token), and stops
+ * on SIGTERM/SIGINT. A missing or invalid configuration exits 64.
  */
 async function main(): Promise<void> {
 	let config: OperatorConfig;
@@ -30,9 +31,11 @@ async function main(): Promise<void> {
 	const server = await OperatorServer.start({
 		control,
 		port: config.port,
+		loginKey: config.loginKey,
 		onError: (error) => process.stderr.write(`operator: unexpected error: ${describe(error)}\n`),
 	});
-	process.stdout.write(`operator console at ${server.url}\n`);
+	// The one-time login URL: the console key (never the control token) is exchanged for a session cookie.
+	process.stdout.write(`operator console at ${server.url}/login?k=${config.loginKey}\n`);
 
 	let stopping = false;
 	const stop = (signal: NodeJS.Signals): void => {

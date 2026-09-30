@@ -130,7 +130,17 @@ const replayPathNoAgent = {
 };
 
 export default defineConfig(
-	{ ignores: ['**/dist/**', '**/.turbo/**', '**/coverage/**', '**/node_modules/**', 'evidence/**', '.claude/**'] },
+	{
+		ignores: [
+			'**/dist/**',
+			'**/.turbo/**',
+			'**/coverage/**',
+			'**/node_modules/**',
+			'evidence/**',
+			'.runs/**',
+			'.claude/**',
+		],
+	},
 	js.configs.recommended,
 	tseslint.configs.strict,
 	tseslint.configs.stylistic,

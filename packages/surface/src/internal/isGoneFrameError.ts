@@ -5,7 +5,7 @@
 export function isGoneFrameError(error: unknown): boolean {
 	return (
 		error instanceof Error &&
-		/Execution context was destroyed|Frame was detached|frame got detached|Target page, context or browser has been closed/i.test(
+		/Execution context was destroyed|Frame was detached|Frame has been detached|frame got detached|Cannot find context with specified id|Target page, context or browser has been closed/i.test(
 			error.message,
 		)
 	);

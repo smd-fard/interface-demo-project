@@ -60,6 +60,25 @@ export interface DiscoveryRunnerOptions {
 	readonly random?: Random;
 	/** Test seam: the browser launcher passed to `openLiveSession`. */
 	readonly launch?: OpenLiveSessionOptions['launch'];
+	/**
+	 * Called once the session is open, before the loop starts: an attended session's control URL and bearer token
+	 * are known here (the CLI writes its control files and prints the URL, never the token). A throw closes the
+	 * session and fails the run.
+	 */
+	readonly onSessionOpen?: (session: DiscoverySessionInfo) => Promise<void>;
+	/** Called after the session has closed (also on failure), e.g. to remove the control files. */
+	readonly onSessionClosed?: (session: DiscoverySessionInfo) => Promise<void>;
+}
+
+/** What `onSessionOpen` / `onSessionClosed` learn about the live session. */
+export interface DiscoverySessionInfo {
+	readonly runId: RunId;
+	/** Absolute path of the run directory. */
+	readonly runDir: string;
+	/** The localhost control API URL; null when unattended. */
+	readonly controlUrl: string | null;
+	/** The control API bearer token; null when unattended. A secret: hand it over through a 0600 file, never log it. */
+	readonly controlToken: string | null;
 }
 
 /** What a discovery run produced: the loop outcome and, on `goal_met` only, the compiled artifact and its paths. */
@@ -87,6 +106,8 @@ export const STOP_FAILURE_REASONS: Readonly<Record<StopReason, FailureReason>> =
 	goal_unverified: 'checkpoint_failed',
 	model_gave_up: 'recovery_exhausted',
 	human_aborted: 'human_aborted',
+	// The provider call failed after the SDK's bounded retries: the nearest contract reason (code `model_error`).
+	model_error: 'recovery_exhausted',
 });
 
 const EXPECTED = 'the discovery goal met and verified on screen';
@@ -104,9 +125,11 @@ export class DiscoveryRunner {
 	/**
 	 * Runs the discovery once; the session is always closed (its manifest written) before this returns. A stop is
 	 * a returned `stopped` outcome, not a throw.
+	 * A model API failure (`ModelCallError` after the client's retries) is a `model_error` stop with a `failure`
+	 * result (`observed` records whether it is retryable); a model call cut off by the time budget is `timeout`.
 	 * @throws the compiler's typed errors (`ArtifactCompileError`, `UnparameterizedSensitiveValueError`,
 	 *   `ConcreteValueLeakError`, …) after writing a `failure` / `artifact_invalid` result, when the goal was met
-	 *   but the run does not compile; `ModelCallError` / `ScriptError` from the model.
+	 *   but the run does not compile; `ScriptError` from a scripted model.
 	 */
 	async run(): Promise<DiscoveryRunResult> {
 		const options = this.options;
@@ -138,12 +161,20 @@ export class DiscoveryRunner {
 			...(options.launch === undefined ? {} : { launch: options.launch }),
 		});
 
+		const info: DiscoverySessionInfo = {
+			runId: session.runId,
+			runDir: session.runDir.path,
+			controlUrl: session.controlUrl,
+			controlToken: session.controlToken,
+		};
 		let result: DiscoveryRunResult;
 		try {
+			await options.onSessionOpen?.(info);
 			result = await this.#drive(session, { redactor, goal, clock, started });
 		} catch (error) {
 			try {
 				await session.close();
+				await options.onSessionClosed?.(info);
 			} catch (closeError) {
 				throw new AggregateError([error, closeError], 'discovery failed and the session did not close cleanly', {
 					cause: closeError,
@@ -152,6 +183,7 @@ export class DiscoveryRunner {
 			throw error;
 		}
 		await session.close();
+		await options.onSessionClosed?.(info);
 		return result;
 	}
 

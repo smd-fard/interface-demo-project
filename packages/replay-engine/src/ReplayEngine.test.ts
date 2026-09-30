@@ -128,11 +128,12 @@ describe('replay (unit, fake session)', () => {
 
 	it('the success condition not holding is checkpoint_failed outside any step', async () => {
 		const artifact = loadFixture('member-lookup');
-		// Every step checkpoint holds (3 of them), then the success condition does not.
+		// Every step checkpoint holds (3 of them, each also read once before its step: the retry's pre-step state),
+		// then the success condition does not.
 		const held = { kind: 'held' } as const;
 		fixture = await fakeReplaySession({
 			onAct: memberLookupOnAct,
-			checks: [held, held, held, { kind: 'not_held', observed: 'text "Member Inquiry" not present' }],
+			checks: [held, held, held, held, held, held, { kind: 'not_held', observed: 'text "Member Inquiry" not present' }],
 		});
 		const result = await run(artifact, { memberId: '12345' });
 		expect(result).toMatchObject({ kind: 'failure', reason: 'checkpoint_failed', step: null });

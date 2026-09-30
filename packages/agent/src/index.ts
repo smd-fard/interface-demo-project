@@ -9,6 +9,7 @@ export {
 	STOP_FAILURE_REASONS,
 	type DiscoveryRunnerOptions,
 	type DiscoveryRunResult,
+	type DiscoverySessionInfo,
 } from './DiscoveryRunner.js';
 export {
 	DiscoveryLoop,
@@ -47,10 +48,10 @@ export {
 export { containsValue, createTextGuard, type TextGuard } from './compiler/TextGuard.js';
 
 // the model port
-export type { ModelClient, ModelRequest } from './model/ModelClient.js';
+export type { ModelCallOptions, ModelClient, ModelRequest } from './model/ModelClient.js';
 export type { ModelMessage, ModelToolCall, ModelUserContent } from './model/ModelMessage.js';
 export type { ModelToolSpec } from './model/ModelToolSpec.js';
-export type { ModelStopReason, ModelTurn, ModelUsage } from './model/ModelTurn.js';
+export type { ModelResponseInfo, ModelStopReason, ModelTurn, ModelUsage } from './model/ModelTurn.js';
 
 // model adapters
 export {
@@ -80,7 +81,7 @@ export {
 	type AgentToolDefinition,
 	type ControlToolName,
 } from './tools/toolDefinitions.js';
-export { TOOL_INPUT_SCHEMAS, type AgentToolName } from './tools/toolInputSchemas.js';
+export { MIN_REASON_LENGTH, TOOL_INPUT_SCHEMAS, type AgentToolName } from './tools/toolInputSchemas.js';
 export { toolToAction, type ToolCallContext } from './tools/toolToAction.js';
 export type { ToolDecision } from './tools/ToolDecision.js';
 export type { ValueSource } from './tools/ValueSource.js';

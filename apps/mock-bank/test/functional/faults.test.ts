@@ -117,6 +117,26 @@ describe('mock-bank: fault switches', () => {
 		expect((await teller.get('/member/search')).body).toMatch(/value="Search"/);
 	});
 
+	it('late_render renders Search without the button and writes it in with a delayed inline script', async () => {
+		await bank.setFault({ code: 'late_render', delayMs: 700 });
+		const page = await teller.get('/member/search');
+		expect(titleOf(page.body)).toBe('CoreOne - Member Search');
+		expect(page.body).toMatch(/setTimeout\(function/);
+		expect(page.body).toMatch(/}, 700\);/);
+		// The button is not in the served markup: only the script's string literal holds it.
+		expect(page.body.split('<script>')[0]).not.toMatch(/value="Search"/);
+		expect((await teller.get('/member/search')).body).not.toMatch(/setTimeout/);
+	});
+
+	it('wrong_screen serves Account Summary instead of Member Inquiry, once', async () => {
+		await bank.setFault({ code: 'wrong_screen' });
+		const page = await teller.get('/member/detail?txt1=12345&btnGo=Search');
+		expect(page.status).toBe(200);
+		expect(titleOf(page.body)).toBe('CoreOne - Account Summary');
+		expect(textOf(page.body)).not.toContain('Member Inquiry');
+		expect(titleOf((await teller.get('/member/detail?txt1=12345&btnGo=Search')).body)).toBe('CoreOne - Member Inquiry');
+	});
+
 	it('honours an explicit route filter (glob) and leaves other routes alone', async () => {
 		await bank.setFault({ code: 'app_error', route: '/subaccount/*' });
 		expect((await teller.get('/member/detail?m=12345')).status).toBe(200);

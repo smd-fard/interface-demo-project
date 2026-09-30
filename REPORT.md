@@ -1,190 +1,173 @@
 # Design Report — Computer-Use Automation System
 
-> **Status.** Discover → compile → replay → handoff is built, tested with a scripted model, and captured with a
-> real model against the local mock-bank. All captured runs are in [`evidence/`](evidence/README.md).
+> The whole loop is built and captured with a real model: discover, compile, replay, hand off, evidence. It is
+> tested with a scripted model (~1,300 unit and ~180 browser tests, in CI). Captured runs:
+> [`evidence/`](evidence/README.md).
 
 ## 1. Architecture
 
 ```
 artifact-schema ← policy ← evidence ← surface ← session ← { replay-engine, agent } ← { cli, operator }
-apps/mock-bank: isolated black box, reached only over HTTP through a Surface
+apps/mock-bank: a black box, reached only over HTTP through a Surface
 ```
 
-| Stage    | Where                           | What happens                                                                                     |
-| -------- | ------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Discover | `@idp/agent` `DiscoveryLoop`    | The model sees a redacted, placeholderized a11y observation and makes one policy-guarded tool call per turn. |
-| Compile  | `@idp/agent` `ArtifactCompiler` | A `goal_met` trace becomes a strict, hashed artifact. `assertNoConcreteValues` refuses concrete sensitive values. |
-| Verify   | `apps/cli discover`             | The artifact is replayed once with the example inputs and saved only if that replay succeeds.     |
-| Replay   | `@idp/replay-engine`            | No model. It returns a `RunResult`.                                                              |
+- **Discover** (`@idp/agent`): Claude sees a redacted accessibility-tree observation, with inputs as placeholders,
+  and makes one policy-checked tool call per turn, with a reason.
+- **Compile**: the successful trace becomes a strict, hashed artifact. Saving is refused if any concrete
+  sensitive value remains, and the artifact is saved only after one verification replay succeeds.
+- **Replay** (`@idp/replay-engine`): no model. It returns a typed `RunResult`.
+- **Handoff** (`@idp/session`, `apps/operator`): a control lease, intervention requests, and a localhost control
+  API over the same live browser.
 
-**Real run.** `claude-sonnet-5-5` met a member-lookup goal in 8 turns; the compiled artifact passed
-verify-replay and is now `artifacts/member-lookup.json`. See `evidence/discovery-member-lookup/`
-(placeholderized prompts, per-turn decisions with reasons). The scripted round trip is tested in
-`apps/cli/test/functional/cli.test.ts`.
+**The real run.** `claude-sonnet-5-5` met "look up member 12345 and read their current savings balance" in 8
+turns. Each turn is logged with its reason and the API's message id, stop reason and token usage. The artifact
+became [`artifacts/member-lookup.json`](artifacts/member-lookup.json).
 
-**Key decisions and trade-offs:**
-
-- **TypeScript monorepo** (pnpm + Turborepo). Layering is machine-checked (`layers.json` BND001–BND009,
-  ESLint): only `surface` imports Playwright, only `agent` the Anthropic SDK; a test fails if `replay-engine`
-  reaches `agent`. Cost: 11 workspaces of config.
-  See [ADR-0001](docs/adr/0001-stack-and-workspace-layout.md).
-- **Single process, file storage.** The CLI hosts browser, session and a localhost control API; the operator
-  console is separate. Artifacts, policy, profiles and evidence are files.
-- **Proxy target.** A local, hostile "CoreOne" app: framesets, nested tables, no ids or ARIA, 11 deterministic
-  fault switches, a tenant-B variant, synthetic data. Trade-off: we wrote it, so its realism is our claim. See [ADR-0002](docs/adr/0002-proxy-target-hostile-mock-bank.md).
+**Trade-offs.**
+- **Layers checked by machine.** Only `surface` imports Playwright and only `agent` the Anthropic SDK. A lint rule
+  fails if `replay-engine` can reach `agent`, so "no model on the replay path" is enforced. The cost is eleven
+  workspaces of configuration ([ADR-0001](docs/adr/0001-stack-and-workspace-layout.md)).
+- **One process, file storage, no queue or database.** That is enough for one operator per session; a real
+  deployment would put a queue behind the same interfaces.
+- **A hostile proxy target.** "CoreOne" has framesets, layout tables, no ids or ARIA, 13 deterministic fault
+  switches and a tenant-B variant. Because we wrote it, its realism is our claim
+  ([ADR-0002](docs/adr/0002-proxy-target-hostile-mock-bank.md)).
 
 ## 2. Artifact schema
 
-`CapabilityArtifactSchema`: strict Zod, `schemaVersion` 1.0.0, JSON Schema export with a drift test. Trimmed
-from the **discovered** [`artifacts/member-lookup.json`](artifacts/member-lookup.json) (7 steps, 4 of them
-sign-on):
+Strict Zod, `schemaVersion` 1.0.0, with a JSON Schema export guarded by a drift test. One step of the discovered
+artifact:
 
 ```json
-{ "provenance": { "discoveryRunId": "discovery-20260930T033842-7774", "model": "anthropic:claude-sonnet-5-5" },
-  "params": [{ "name": "memberId", "type": { "kind": "string" }, "sensitive": true }],
-  "steps": [ …,
-    { "id": "s05-fill-member", "kind": "fill", "value": { "kind": "param", "name": "memberId" }, … },
-    { "id": "s06-click-search", "kind": "click", "risk": "reversible",
-      "target": { "ladder": [{ "kind": "role", "role": "button", "name": "Search", "exact": true, "rationale": "…" },
-        { "kind": "text", "text": "Search", "match": "exact" }, { "kind": "structural", … }] },
-      "checkpoint": { "kind": "text_present", "text": "Member Inquiry" } }, … ],
-  "contentHash": "sha256:dfff5470…" }
+{ "id": "s06-click-search", "kind": "click", "risk": "reversible",
+  "target": { "frame": [{ "kind": "by_name", "name": "content" }], "ladder": [
+    { "kind": "role", "role": "button", "name": "Search", "rationale": "…" },
+    { "kind": "text", "text": "Search" }, { "kind": "structural", "anchor": { … }, "rationale": "…" } ] },
+  "checkpoint": { "kind": "text_present", "text": "Member Inquiry" } }
 ```
 
-| Part                                  | Why it exists                                                                                     |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| Locator ladder (1–5 rungs + `rationale`) | Role → label/text → structural; a fallback rung reports drift; rationales make rungs reviewable (R2.3). |
-| `params` / `outputs` (typed, `sensitive`) | Steps hold `{{memberId}}` or a `credentialRef`, never literals. Refinements reject undeclared placeholders. |
-| `checkpoint` per screen-changing step | Required on navigate, click and press: "didn't throw" is not success. |
-| `outcomeRules` + `successCondition`   | Copied from the reviewed app profile, so the artifact can be read on its own.                     |
-| `summary`, `app`, `provenance`        | `does`/`needs`/`returns` for the calling agent; app identity; run id, model id, human step ids. |
-| `version` + `contentHash`             | Capability semver + sha256 over canonical JSON (tamper-evident).                                 |
+| Part | Why |
+| ---- | --- |
+| Locator ladder, each rung with a rationale | Role and name → label or text → structural anchor (the cell next to a label, a form row). A lower rung that matches is reported as drift. The rationale says what would break the rung. |
+| Typed `params` / `outputs`, `sensitive` flag | Steps hold `{{memberId}}` or a credential reference, never literals. Params are checked before the browser acts, outputs after extraction. |
+| A checkpoint on every screen-changing step | Required by the schema. "The click didn't throw" is not success. |
+| `successCondition` | Proposed by the model at finish, verified on screen, then re-checked at the end of every replay. |
+| `outcomeRules` | Copied from the reviewed app profile, so the artifact can be read on its own. |
+| `summary`, `provenance`, `version`, `contentHash` | What it does, needs and returns (for the calling agent); which run and model made it; semver; a sha256 checked on load. |
 
-**Limit.** `discover` emits each `--input` as a plain `string` param, so `memberId=abc` reaches the app, which
-rejects it (`business_outcome` `validation_rejected`, exit 3). The hand-written fixture
-(`packages/artifact-schema/fixtures/member-lookup.artifact.json`, `^\d{5}$`) fails `invalid_params` before any
-browser action; tightening is a manual review step today. No `status` (`draft → approved`) field (S3). See
-[ADR-0003](docs/adr/0003-artifact-schema-and-locator-ladder.md).
+**Limits.** `discover` emits inputs as plain strings, so `memberId=abc` reaches the app and comes back as a
+`validation_rejected` outcome. Tightening types is a review step. Boolean outputs are refused (extract parses
+only text and numbers). There is no `draft → approved` status yet
+([ADR-0003](docs/adr/0003-artifact-schema-and-locator-ladder.md)).
 
 ## 3. Determinism & error handling
 
-**Resolution.** `LadderResolver` tries rungs in order in the frame path, requiring exactly one match; a stale
-frame is re-resolved once. **Waits.** Every step is bounded (10 s); the checkpoint is polled, raced against the
-condition detectors. No fixed sleeps.
-**Classification** resolves artifact rule → app profile → catalog default; an unknown code fails as
-`checkpoint_failed`, so the engine never guesses a class.
+- **Targeting.** Rungs are tried in order inside the frame path. A rung counts only on exactly one match. The
+  resolver polls for up to 5 s, so a late-rendered control is waited for.
+- **Waits.** Every wait is bounded: action 10 s, frame load 10 s, checkpoint 10 s, slow load at most 15 s. That is
+  about 40 s per attempt, times a fixed recovery budget. The only fixed pauses are short settle windows.
+- **Classification.** A detected condition is looked up in the artifact's rules, then the profile's, then the
+  built-in catalog. An unknown code fails. A checkpoint that cannot read the page fails; it never passes by absence.
 
-| Condition             | Detector              | Class            | Response (budget)                                             |
-| --------------------- | --------------------- | ---------------- | ------------------------------------------------------------- |
-| `member_not_found`, `validation_rejected`, `permission_denied` | text signature | business_outcome | stop, return the code and redacted message |
-| `known_dialog`        | native dialog text    | recoverable      | policy-checked dismiss (≤ 1 per step), re-verify the checkpoint |
-| `slow_load`           | step used its whole bound | recoverable  | one wait up to `slowLoadBudgetMs`, then `failed_load`          |
-| `failed_load`         | 5xx signature         | recoverable      | retry ≤ 2 with backoff; never across an irreversible step     |
-| `session_timeout`     | Sign On signature     | recoverable      | one re-auth per run, re-run to the failed step; else `session_lost` |
-| `unknown_dialog`, `app_error`, `target_unresolved`, `checkpoint_failed` | dialog / signature / locator / checkpoint | failure | stop, capture masked evidence, escalate when attended |
+| Condition | Class | Response |
+| --------- | ----- | -------- |
+| `member_not_found`, `validation_rejected`, `permission_denied` | business outcome | Return the code and the redacted app message. |
+| `known_dialog` | recoverable | Policy-checked dismiss (≤ 1 per step), re-verify the checkpoint. |
+| `slow_load` / `failed_load` | recoverable | One extra wait, then ≤ 2 reload-and-retry. Never re-runs an irreversible step (declared or raised by policy). |
+| `session_timeout` | recoverable | One re-sign-on per run, re-run to the failed step; else `session_lost`. |
+| `unknown_dialog`, `app_error`, `target_unresolved`, `checkpoint_failed` | failure | Stop with step, expected, observed, masked evidence; escalate when attended. |
 
-**Result contract.** `success` (outputs, drift, recoveries) | `business_outcome` (code, message, step) |
-`failure` (reason, step, expected, observed, evidence refs, intervention id). `FailureReason` has no member
-for a recoverable or an outcome. Every code has an injected-fault functional test.
+**Result contract.** `success` (outputs, drift, recoveries) | `business_outcome` (code, message, step) | `failure`
+(reason, step, expected, observed, evidence refs). A recoverable condition is not a result type; it is handled
+inside the run and logged. Every condition has a functional test driven by a fault switch. The evidence covers
+success, not found, validation, app error, wrong screen, a recovered dialog, a recovered timeout and tenant-B drift.
 
-Captured against the discovered artifact (`evidence/replay-member-lookup-*`): `success`, `not-found`
-(`member_not_found`), `recovered-known-dialog` (1 recovery), `injected-failure` (`app_error` at `s04`, masked
-screenshot + snapshot).
-
-Limits: `slow_load` is a heuristic; recoveries do not nest inside a retry. See
-[ADR-0004](docs/adr/0004-result-contract-and-runtime-condition-taxonomy.md).
+**Judgment calls.** `permission_denied` is an outcome because a retry cannot fix it. Since it concerns the operator
+account, production should also alert someone. `validation_rejected` could mask drift, because fills have no
+checkpoint of their own ([ADR-0004](docs/adr/0004-result-contract-and-runtime-condition-taxonomy.md)).
 
 ## 4. Heterogeneity & multi-tenant
 
-**Surface seam.** Every consumer sees the `Surface` port (`observe`, `resolve`, `act`, `check`, …); no
-Playwright type crosses it. Perception is the frame-aware accessibility tree. Ladder rungs and condition
-signatures map to Windows UIA and macOS AX. **Built:** the Playwright web adapter. **Designed, not built:**
-desktop (UIA/AX) and terminal/3270 adapters, a visual-anchor rung for canvas/image controls. See
-[ADR-0007](docs/adr/0007-surface-abstraction-a11y-first.md).
+**The surface seam.** Replay, agent and session see only the `Surface` port (`observe`, `resolve`, `act`,
+`check`), and no Playwright type crosses it. Artifacts name controls by role, name, label and layout, which Windows
+UI Automation and macOS Accessibility also expose. A desktop adapter would therefore implement the same port and
+keep the artifact format. **Built:** the Playwright adapter, reading the accessibility tree across framesets.
+**Designed:** desktop and terminal adapters, and a visual rung for controls drawn as images
+([ADR-0007](docs/adr/0007-surface-abstraction-a11y-first.md)).
 
-| Mechanism                                   | Status                                                                             |
-| ------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Per-tenant app profiles (`--profile mock-bank.tenant-b`) | Built                                                                  |
-| Drift from rung fallback in `RunResult.success.drift` | Built. In `evidence/replay-member-lookup-tenant-b-drift/result.json`, the artifact discovered on tenant A succeeds on tenant B ("Find", "Account holder ID") with drift at `s05` rung 1 and `s06` rung 2. |
-| Base artifact + overrides (`extends`)       | Designed, not built (S5). The field is in the schema, but no engine reads it.      |
-| Drift aggregation, fingerprint check, re-discovery | Designed, not built.                                        |
-
-Trade-off: tenant B passes only because last-resort rungs hold; the checkpoint proves the match.
-See [ADR-0008](docs/adr/0008-multi-tenant-reuse-base-overrides-and-drift.md).
+**Reuse across tenants.** An artifact belongs to a vendor app (`coreone`), not a tenant. A tenant's differences
+live in its app profile (origin, outcome signatures). **Built:** per-tenant profiles and drift reporting. The
+artifact discovered on tenant A succeeds on tenant B, which renames "Member #" and "Search", and reports drift at
+two steps. **Designed:** a base artifact with per-tenant overrides (`extends` is reserved in the schema), drift
+aggregated across runs to trigger review or re-discovery, and an app-version fingerprint check. Trade-off: tenant B
+passes only on last-resort rungs, and the checkpoints are what prove those rungs matched the right control
+([ADR-0008](docs/adr/0008-multi-tenant-reuse-base-overrides-and-drift.md)).
 
 ## 5. Escalation & handoff
 
-**Stuck detection.** Discovery: same screen digest 3 times, A-B-A-B oscillation, `request_help`, repeated
-denials. Replay: any hard failure or irreversible step. **Intervention request:** redacted
-reason, step, risk, masked screenshot, allowed actions. **Control lease** (`ControlLease`):
+**Detecting "stuck".** Discovery: three actions in a row that don't change the screen, an A-B-A-B oscillation,
+repeated policy denials, or `request_help`. Replay: any hard failure, or an irreversible step. The run raises an
+**intervention request** with the goal or capability, the step and its risk, the reason, a masked screenshot, a
+redacted snapshot and the allowed responses.
+
+**Who is in control.** An explicit lease state machine:
 
 ```
 AGENT → PAUSED → HUMAN → RESUMING → AGENT      (takeover)
-AGENT → PAUSED → RESUMING → AGENT              (approve)       PAUSED → CLOSED (reject)
+AGENT → PAUSED → RESUMING → AGENT              (approval)        PAUSED → CLOSED (reject / abort)
 ```
 
-`LeasedSurface` refuses an agent act unless the lease is `AGENT`, a human act unless `HUMAN`. **Same
-session:** the human works in the same headed Playwright context. **Capture is mediated:** a
-capture-phase script blocks clicks, Enter and submits and re-executes each through the policy guard as actor
-`human`; recorded actions compile as `actor: 'human'` steps. **Resume** re-verifies the checkpoint before
-`reacquire()`. See [ADR-0006](docs/adr/0006-control-transfer-lease-and-mediated-human-control.md).
+Automation acts only in `AGENT`, a human only in `HUMAN`. Outside `HUMAN`, the headed window is locked: a
+person's input is blocked, with a banner. Automation passes the lock one act at a time, after lease and policy allow.
 
-| Path                            | Proof                                                                                   |
-| ------------------------------- | --------------------------------------------------------------------------------------- |
-| Approval (`…→RESUMING→…`) | Captured in `evidence/handoff-open-sub-account/` (`SA-000001`); a scripted call to the real control API approved, not a human. |
-| Takeover (`…→HUMAN→…`) | Captured in `evidence/handoff-member-lookup-takeover/`: `app_error` at `s06` → claim → 3 recorded `human_action` (all `allow`) → resume → `success`. Gestures are real input events from a scripted `SimulatedOperator` (`driver.mjs`), not a person; run on the v1.0.1 fixture, rules 1.0.0. |
+**Same live session, recorded.** The human works in the automation's own browser. Each click, Enter, submit or
+select is held, mapped to a step with a locator ladder, and policy-checked as actor `human` before it runs. A
+refused fill is reverted. Human actions are logged, and in discovery they become `actor: 'human'` steps. **Resume**
+re-verifies the step's checkpoint before automation takes the lease back. A step with no checkpoint resumes only if
+the human acted. Waiting for a claim is bounded (5 min), and the takeover itself separately (30 min).
 
-**Mocked vs full design.** Built: `apps/operator`, a minimal localhost console (list, claim, approve, reject,
-resume, abort) over the bearer-token control API; the operator sits at the headed browser's machine, one per
-session, grants in memory. **Full design (not built):** remote co-browsing (CDP screencast behind the same
-guard), a persistent routed queue, operator identity, four-eyes approval for money movement, durable audit.
+**Operator surface (deliberately minimal).** `idp operator` starts a localhost console, entered through a one-time
+login URL: list, take control, approve, reject, resume, abort. **Full design, not built:** remote co-browsing (a CDP
+screencast behind the same lock), a routed queue, operator identity, four-eyes approval for money movement, a
+durable audit trail. **Evidence:** a real approval and a real takeover with three recorded human actions. A script
+played the operator; no person clicked
+([ADR-0006](docs/adr/0006-control-transfer-lease-and-mediated-human-control.md)).
 
 ## 6. Safety
 
-**Allowlist.** `evaluateAction` checks action kind, allowlist, origin, route and risk; `evaluateLanding` checks
-every frame URL; a network guard aborts other origins. `PolicyGuardedSurface` is the only `Surface` the agent,
-replay and the human recorder receive.
+**Allowlist.** Every agent, replay and human action goes through `PolicyGuardedSurface`, which checks the action
+type, origin, route and risk, then the URL of every frame afterwards. A network guard blocks other origins. The
+allowlist is configured in [`config/policy.json`](config/policy.json).
 
-**Risk classes.** Risk is the maximum of the registry floor, `declaredRisk`, irreversible name/dialog patterns
-and irreversible routes (incl. a click's form action): raisable, never lowerable. **Irreversible actions need
-human approval** (single-use, step-bound 300 s grant), deliberately giving up unattended money movement at this
-maturity. Rejected: blocking outright, pre-approval (S3). See [ADR-0005](docs/adr/0005-policy-risk-classes-and-approval.md).
+**Risk.** Risk is the highest of the action type's floor, the declared risk, and any irreversible name or route
+pattern, so it can be raised but never lowered. **Irreversible actions need a human approval**: single-use, bound to
+the step, valid 5 minutes. Blocking outright makes the capability useless, and flagging after the fact is too late
+for money movement. The cost: nothing irreversible runs unattended
+([ADR-0005](docs/adr/0005-policy-risk-classes-and-approval.md)).
 
-**Redaction points.** One redactor (known values → patterns → name terms) fronts every sink; branded
-`Redacted<T>`/`MaskedScreenshot` types make an unredacted write fail to compile. The model sees and types
-`{{memberId}}`, and the surface substitutes the real value. Screenshots are masked in the browser; artifacts
-are scanned for concrete values. **No Playwright traces** (not reliably redactable): AC13 is met by a masked
-screenshot plus a redacted a11y snapshot. See [ADR-0009](docs/adr/0009-redaction-model-and-evidence-sinks.md).
+**Redaction.** One redactor (known values, then patterns, then terms) sits in front of every sink: logs, results,
+artifacts, intervention requests, the CLI and model prompts. A `Redacted<T>` type makes an unredacted write fail to
+compile. The model types `{{memberId}}` and the surface substitutes the value. Screenshots are masked in the
+browser. Balances are masked everywhere, since `extract` reads them from the screen; the first real run exposed that
+gap and we closed it with a rule. There are no Playwright traces, because they cannot be redacted
+([ADR-0009](docs/adr/0009-redaction-model-and-evidence-sinks.md)).
 
-**A limit the real run found.** The first real discovery run met the goal and verified, but the scan of its
-recorded prompts found a synthetic *checking* balance in clear: only extracted outputs were known values and no
-pattern covered amounts. We did not promote it. We added a `money-amount` rule (rules 1.1.0, spec FR17, ADR-0009)
-masking every 2-decimal amount before every sink, prompts included; the model never needs the digits, since
-`extract` reads the value from the surface. Attempt 2 is the evidence. Cost: over-redaction.
-
-**Open limits (last safety review):** a target-less `Enter` is judged by frame URLs, not the focused form's
-action; cancelling a commit dialog also needs approval; a short navigation window exists while a human gesture
-is re-executed; some page text reaches tool results outside the `<observation>` block; screenshot masking can
-miss values split across nodes or drawn in images; on-screen values not yet extracted are protected only by
-patterns (the gap the real run exposed); `unknown_dialog` evidence is snapshot-only; irreversible rules are
-hand-kept per app, so a missed pattern leaves a commit `reversible`.
+**Limits.** During an automation act the lock is open for that one act. Irreversible-name rules are hand-written
+per app. Masking can miss values split across elements or drawn in images. Values that aren't extracted rely on
+patterns. The local console trusts the machine it runs on.
 
 ## 7. Cuts
 
-| Cut                                          | Why                                                             |
-| -------------------------------------------- | --------------------------------------------------------------- |
-| Typed params from discovery                  | `discover` emits plain strings; patterns are added in review.   |
-| A person in the takeover capture             | Gestures scripted (real input events), not via the console.     |
-| Playwright traces (FR19/AC13 deviation)      | A trace cannot be redacted. Screenshot + snapshot instead.      |
-| Desktop / terminal surfaces, visual rung     | Designed, not built (the seam only).                            |
-| Real-time co-browsing operator console       | Out of scope per brief §3.6. The console is minimal.            |
-| Multi-tenant `extends` overrides, drift aggregation | Designed, not built (S5).                                |
-| Stretch goals S1–S6; services, DB, CI        | Deferred / out of scope for a file-based PoC.                   |
+| Cut | Why |
+| --- | --- |
+| Param types inferred in discovery | Plain strings; patterns are added in review. |
+| A person in the handoff captures | The API, lease and recorder are real; a script played the operator. |
+| Playwright traces | Not redactable; a masked screenshot plus a snapshot instead. |
+| Desktop / terminal surfaces | Only the seam is built. |
+| Co-browsing console | Out of scope for the brief. |
+| Tenant overrides, drift aggregation | Designed; the variant replay with drift is built. |
+| Stretch goals, services, database | Depth went into replay, safety and handoff. |
 
-**Next, in order:**
-
-1. Close the §6 warnings (a form-action check for a target-less Enter, an accept-only dialog rule).
-2. Infer param types from discovery (e.g. a pattern from the example and the app's validation message).
-3. S3 approval status, so a discovered artifact is reviewed before the catalog serves it.
-4. S5 overrides.
-5. The desktop adapter.
+**Next:** (1) infer param types from the example value and the app's validation message; (2) an approval status
+gating the catalog; (3) base artifacts with tenant overrides; (4) persisted request expiry and operator identity;
+(5) the desktop adapter.
