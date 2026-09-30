@@ -9,7 +9,25 @@ lease** — an explicit state machine (`AGENT` / `PAUSED` / `HUMAN` / `RESUMING`
 should be, in control of a live session — plus intervention requests and the pause / cede / resume
 protocol. A human takes over the *same* live session (not a fresh one) through the `Surface` port, their
 actions are recorded as registered action types, and the agent or replay resumes with context and
-evidence preserved. Shell — empty until its spec lands (`session-handoff`).
+evidence preserved. Plan steps 29–31 are in place: `ControlLease`, `LeasedSurface`, `InterventionService`,
+the localhost control API (`ControlServer` / `ControlClient`) and `openLiveSession`.
+
+## Rules (steps 29–31)
+
+- The lease (`AGENT` / `PAUSED` / `HUMAN` / `RESUMING` / `CLOSED`) changes only through its methods, serialized
+  in a promise queue; a duplicate of the last transition is idempotent, anything else illegal throws
+  `IllegalLeaseTransitionError`. Every transition is logged as `lease_change` by the live session.
+- The session hands out only `LeasedSurface(PolicyGuardedSurface(web))`. The recorder's guard wraps a
+  `LeasedSurface` too, so a human acts only while `HUMAN` and the automation only while `AGENT` (FR20).
+- Intervention requests are built from redacted text (`redactInterventionRequest`), validated against
+  `InterventionRequestSchema` and persisted as `interventions/<id>[-vN].json` (never overwritten). Grants
+  stay in memory.
+- The control server binds 127.0.0.1 only, needs the per-session bearer token (system randomness), accepts
+  only `{ "operator": "<handle>" }` bodies, and serves only masked screenshots, redacted snapshots and
+  intervention documents (never `localOnly` refs or prompts). No zod here: bodies are validated by hand plus
+  the artifact-schema contracts.
+- `requestApproval` reacquires the lease itself on approve (nothing changed on screen); after `escalate`
+  resumes, the caller re-verifies its checkpoint and then calls `lease.reacquire()`.
 
 ## Owns
 
@@ -45,12 +63,28 @@ Codes most relevant here:
 
 ```
 src/
-  index.ts           barrel — currently `export {};`
-  index.test.ts      placeholder test (keeps the test gate green until real tests land)
-tsconfig.json        noEmit; typecheck + editor, includes src, test/ and vitest.config.ts
-tsconfig.build.json  emits src → dist (excludes *.test.ts)
-vitest.config.ts     src/**/*.test.ts + test/**/*.test.ts, node env, no file parallelism
+  index.ts           barrel
+  lease/             ControlLease (state machine), LeasedSurface (FR20 check on act)
+  intervention/      InterventionService, redactInterventionRequest
+  control/           ControlServer (node:http, 127.0.0.1), ControlClient (fetch), ControlTarget, LeaseView
+  LiveSession.ts     openLiveSession: browser → guard → lease, run dir/log/evidence/manifest, recorder, control API
+  errors/            typed errors with stable codes
+test/functional/     handoff.test.ts: mock-bank + real headless browser (takeover, approval, unattended)
+tsconfig.build.json  emits src → dist (excludes *.test.ts and *.test-helper.ts)
+vitest.config.ts     unit: src/**/*.test.ts (the control server binds 127.0.0.1:0; no browser)
+vitest.functional.config.ts  test/functional/**; build mock-bank first
 ```
+
+## Exemplars (copy these)
+
+- A state machine with a serialized queue and typed refusals: `src/lease/ControlLease.ts` (+ `.test.ts`).
+- A `Surface` decorator: `src/lease/LeasedSurface.ts`.
+- Redact → validate → persist a versioned document: `src/intervention/InterventionService.ts`.
+- A route + its status mapping and a typed client: `src/control/ControlServer.ts`, `src/control/ControlClient.ts`
+  (unit-tested against `fakeControlTarget.test-helper.ts`).
+- A typed error with a stable `code`: `src/errors/InterventionConflictError.ts`.
+
+The public API (every export, the transitions table, the routes and status codes) is in [README.md](README.md).
 
 ## Commands
 
@@ -58,6 +92,7 @@ vitest.config.ts     src/**/*.test.ts + test/**/*.test.ts, node env, no file par
 pnpm --filter @idp/session build
 pnpm --filter @idp/session typecheck
 pnpm --filter @idp/session test
+pnpm --filter @idp/session test:functional   # needs apps/mock-bank/dist
 ```
 
 Lint and format are root-only (`pnpm lint`, `pnpm format:check`); there is no per-package lint script.

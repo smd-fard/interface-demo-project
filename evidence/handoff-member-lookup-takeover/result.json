@@ -1,0 +1,16 @@
+{
+	"kind": "success",
+	"runId": "replay-20260930T032226-293a",
+	"artifact": {
+		"id": "member-lookup",
+		"version": "1.0.1",
+		"contentHash": "sha256:d5f22180d5bf91d0088a622db255cb884902a4d461be1848f2dd2652100ea90d"
+	},
+	"outputs": {
+		"savingsBalance": "[REDACTED]",
+		"memberName": "[REDACTED]"
+	},
+	"durationMs": 2225,
+	"drift": [],
+	"recoveries": 0
+}

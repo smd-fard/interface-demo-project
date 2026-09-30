@@ -1,0 +1,1869 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"schemaVersion": {
+			"type": "string",
+			"const": "1.0.0",
+			"description": "Semver of the capability-artifact contract this document was written against. A loader accepts only the version it was built for; a mismatch is rejected rather than guessed at."
+		},
+		"id": {
+			"type": "string",
+			"maxLength": 64,
+			"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+			"description": "Capability id: a lowercase kebab-case slug, e.g. \"member-lookup\". Stable across artifact versions."
+		},
+		"version": {
+			"type": "string",
+			"pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+			"description": "Version of this capability. Bump major when params/outputs change incompatibly, minor for new optional params/outputs, patch for locator or checkpoint fixes."
+		},
+		"title": {
+			"type": "string",
+			"minLength": 1,
+			"maxLength": 200,
+			"description": "Short human-readable name, e.g. \"Member lookup\"."
+		},
+		"summary": {
+			"type": "object",
+			"properties": {
+				"does": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 2000,
+					"description": "What the capability does in the target app, in one or two sentences, including its side effects."
+				},
+				"needs": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 2000,
+					"description": "What the caller must supply (params) and what is resolved at run time (credentials)."
+				},
+				"returns": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 2000,
+					"description": "What a success returns, and which business outcomes the caller should expect."
+				}
+			},
+			"required": ["does", "needs", "returns"],
+			"additionalProperties": false,
+			"description": "Plain-language contract for a reviewer and a calling agent (R2.7)."
+		},
+		"app": {
+			"type": "object",
+			"properties": {
+				"vendorApp": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+					"description": "Vendor application id: a lowercase kebab-case slug naming the legacy product, e.g. \"coreone\". Independent of the tenant."
+				},
+				"variant": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+					"description": "Tenant/variant id: a lowercase kebab-case slug naming one institution's deployment of a vendor app, e.g. \"tenant-a\". Tenants of the same app can differ in labels and layout (R7.2)."
+				},
+				"appVersion": {
+					"description": "The app version observed during discovery, e.g. \"CoreOne 7.4\".",
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 100
+				}
+			},
+			"required": ["vendorApp", "variant"],
+			"additionalProperties": false,
+			"description": "The app and tenant this capability was discovered against. Deliberately no origin: routes are relative, and the origin comes from the app profile/CLI at run time, so the artifact never pins an environment."
+		},
+		"extends": {
+			"type": "object",
+			"properties": {
+				"baseId": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+					"description": "Id of the base capability this one overrides."
+				},
+				"baseVersion": {
+					"type": "string",
+					"pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+					"description": "Version of the base capability."
+				}
+			},
+			"required": ["baseId", "baseVersion"],
+			"additionalProperties": false,
+			"description": "Reserved for a base-plus-tenant-overrides design (R7.2/S5): this artifact is a variant of the named base. Recorded only; no v1 engine reads it."
+		},
+		"provenance": {
+			"type": "object",
+			"properties": {
+				"discoveryRunId": {
+					"anyOf": [
+						{
+							"type": "string",
+							"pattern": "^(?:discovery|replay)-\\d{8}T\\d{6}-[0-9a-f]{4}$",
+							"description": "Run id: \"<kind>-<yyyymmddThhmmss>-<4hex>\" with kind discovery|replay and a UTC timestamp, e.g. \"replay-20260929T101500-a1b2\". Names the run evidence directory."
+						},
+						{ "type": "null" }
+					],
+					"description": "The discovery run this artifact was compiled from (its evidence directory); null = hand-written."
+				},
+				"compiledAt": {
+					"type": "string",
+					"format": "date-time",
+					"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+					"description": "When the artifact was compiled (ISO 8601, UTC)."
+				},
+				"compilerVersion": {
+					"type": "string",
+					"pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+					"description": "Version of the compiler that produced the artifact."
+				},
+				"model": {
+					"anyOf": [
+						{ "type": "string", "maxLength": 100, "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/@-]*$" },
+						{ "type": "null" }
+					],
+					"description": "Id of the model that drove discovery, e.g. \"claude-sonnet-4-5\" — the id only, never a prompt or transcript. null = no model (hand-written)."
+				},
+				"humanStepIds": {
+					"maxItems": 200,
+					"type": "array",
+					"items": {
+						"type": "string",
+						"maxLength": 64,
+						"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+						"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+					},
+					"description": "Steps recorded from a human operator during a handoff rather than chosen by the model."
+				}
+			},
+			"required": ["discoveryRunId", "compiledAt", "compilerVersion", "model", "humanStepIds"],
+			"additionalProperties": false,
+			"description": "Where the artifact came from. Kept separate from the model transcript, which is never stored here."
+		},
+		"credentialRef": {
+			"description": "The one credential this capability signs on with. Every credential value in the steps must reference it; omitted = the capability uses no credential.",
+			"type": "string",
+			"maxLength": 64,
+			"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"
+		},
+		"params": {
+			"maxItems": 50,
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"maxLength": 64,
+						"pattern": "^[a-z][a-zA-Z0-9]*$",
+						"description": "Parameter name: a camelCase identifier, e.g. \"memberId\". Referenced from templates as {{memberId}}."
+					},
+					"description": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 500,
+						"description": "What the caller must supply, written for a calling agent and a reviewer (R2.7)."
+					},
+					"type": {
+						"oneOf": [
+							{
+								"type": "object",
+								"properties": {
+									"kind": { "type": "string", "const": "string" },
+									"pattern": {
+										"description": "ECMAScript regular expression the whole value must match (implicitly anchored with ^…$).",
+										"type": "string",
+										"minLength": 1
+									},
+									"minLength": {
+										"description": "Minimum length in characters.",
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									},
+									"maxLength": {
+										"description": "Maximum length in characters.",
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									}
+								},
+								"required": ["kind"],
+								"additionalProperties": false,
+								"description": "Free text, optionally constrained by a full-match pattern and length bounds."
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": { "type": "string", "const": "integer" },
+									"min": {
+										"description": "Inclusive lower bound.",
+										"type": "integer",
+										"minimum": -9007199254740991,
+										"maximum": 9007199254740991
+									},
+									"max": {
+										"description": "Inclusive upper bound.",
+										"type": "integer",
+										"minimum": -9007199254740991,
+										"maximum": 9007199254740991
+									}
+								},
+								"required": ["kind"],
+								"additionalProperties": false,
+								"description": "A safe integer. As a param it may arrive as a digit string (CLI) and is coerced to a number."
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": { "type": "string", "const": "decimal" },
+									"scale": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 10,
+										"description": "Maximum number of fractional digits, e.g. 2 for a currency amount."
+									}
+								},
+								"required": ["kind", "scale"],
+								"additionalProperties": false,
+								"description": "An exact decimal, always represented as a string matching ^-?\\d+(\\.\\d+)?$ with at most `scale` fractional digits (e.g. \"1234.56\"). Never a JSON number, to avoid floating-point loss on money."
+							},
+							{
+								"type": "object",
+								"properties": { "kind": { "type": "string", "const": "boolean" } },
+								"required": ["kind"],
+								"additionalProperties": false,
+								"description": "true/false. As a param the strings \"true\"/\"false\" are accepted and coerced."
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": { "type": "string", "const": "enum" },
+									"values": {
+										"minItems": 1,
+										"type": "array",
+										"items": { "type": "string", "minLength": 1 },
+										"description": "The allowed values, e.g. the option values of a dropdown."
+									}
+								},
+								"required": ["kind", "values"],
+								"additionalProperties": false,
+								"description": "One of a fixed set of strings."
+							},
+							{
+								"type": "object",
+								"properties": { "kind": { "type": "string", "const": "date" } },
+								"required": ["kind"],
+								"additionalProperties": false,
+								"description": "An ISO 8601 calendar date string \"YYYY-MM-DD\"."
+							}
+						],
+						"description": "The value vocabulary shared by params and outputs, discriminated on `kind`."
+					},
+					"required": {
+						"default": true,
+						"description": "Whether the caller must supply it. Defaults to true.",
+						"type": "boolean"
+					},
+					"sensitive": {
+						"default": true,
+						"description": "Whether the value is sensitive (PII, account data). Defaults to true: sensitive values are redacted in every sink and can never be stored as literals or examples.",
+						"type": "boolean"
+					},
+					"example": {
+						"description": "A synthetic example value. Forbidden when `sensitive` is true; must match `type`.",
+						"type": "string",
+						"maxLength": 200
+					}
+				},
+				"required": ["name", "description", "type"],
+				"additionalProperties": false,
+				"description": "A typed input of the capability. Steps reference it as {\"kind\":\"param\"} or {{name}}."
+			},
+			"description": "Typed inputs; names are unique."
+		},
+		"outputs": {
+			"maxItems": 50,
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"maxLength": 64,
+						"pattern": "^[a-z][a-zA-Z0-9]*$",
+						"description": "Output name: a camelCase identifier, e.g. \"savingsBalance\". Keys the success result outputs record."
+					},
+					"description": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 500,
+						"description": "What the value means, written for a calling agent and a reviewer (R2.7)."
+					},
+					"type": {
+						"oneOf": [
+							{
+								"type": "object",
+								"properties": {
+									"kind": { "type": "string", "const": "string" },
+									"pattern": {
+										"description": "ECMAScript regular expression the whole value must match (implicitly anchored with ^…$).",
+										"type": "string",
+										"minLength": 1
+									},
+									"minLength": {
+										"description": "Minimum length in characters.",
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									},
+									"maxLength": {
+										"description": "Maximum length in characters.",
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 9007199254740991
+									}
+								},
+								"required": ["kind"],
+								"additionalProperties": false,
+								"description": "Free text, optionally constrained by a full-match pattern and length bounds."
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": { "type": "string", "const": "integer" },
+									"min": {
+										"description": "Inclusive lower bound.",
+										"type": "integer",
+										"minimum": -9007199254740991,
+										"maximum": 9007199254740991
+									},
+									"max": {
+										"description": "Inclusive upper bound.",
+										"type": "integer",
+										"minimum": -9007199254740991,
+										"maximum": 9007199254740991
+									}
+								},
+								"required": ["kind"],
+								"additionalProperties": false,
+								"description": "A safe integer. As a param it may arrive as a digit string (CLI) and is coerced to a number."
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": { "type": "string", "const": "decimal" },
+									"scale": {
+										"type": "integer",
+										"minimum": 0,
+										"maximum": 10,
+										"description": "Maximum number of fractional digits, e.g. 2 for a currency amount."
+									}
+								},
+								"required": ["kind", "scale"],
+								"additionalProperties": false,
+								"description": "An exact decimal, always represented as a string matching ^-?\\d+(\\.\\d+)?$ with at most `scale` fractional digits (e.g. \"1234.56\"). Never a JSON number, to avoid floating-point loss on money."
+							},
+							{
+								"type": "object",
+								"properties": { "kind": { "type": "string", "const": "boolean" } },
+								"required": ["kind"],
+								"additionalProperties": false,
+								"description": "true/false. As a param the strings \"true\"/\"false\" are accepted and coerced."
+							},
+							{
+								"type": "object",
+								"properties": {
+									"kind": { "type": "string", "const": "enum" },
+									"values": {
+										"minItems": 1,
+										"type": "array",
+										"items": { "type": "string", "minLength": 1 },
+										"description": "The allowed values, e.g. the option values of a dropdown."
+									}
+								},
+								"required": ["kind", "values"],
+								"additionalProperties": false,
+								"description": "One of a fixed set of strings."
+							},
+							{
+								"type": "object",
+								"properties": { "kind": { "type": "string", "const": "date" } },
+								"required": ["kind"],
+								"additionalProperties": false,
+								"description": "An ISO 8601 calendar date string \"YYYY-MM-DD\"."
+							}
+						],
+						"description": "The value vocabulary shared by params and outputs, discriminated on `kind`."
+					},
+					"sensitive": {
+						"default": true,
+						"description": "Whether the value is sensitive. Defaults to true: it is redacted in logs and evidence.",
+						"type": "boolean"
+					}
+				},
+				"required": ["name", "description", "type"],
+				"additionalProperties": false,
+				"description": "A typed output of the capability, produced by exactly one extract step and returned on success."
+			},
+			"description": "Typed outputs returned on success; names are unique and each is extracted exactly once."
+		},
+		"steps": {
+			"minItems": 1,
+			"maxItems": 200,
+			"type": "array",
+			"items": { "$ref": "#/$defs/Step" },
+			"description": "The deterministic steps, in order: login-phase steps first, then main steps. Ids are unique."
+		},
+		"successCondition": {
+			"description": "Verified after the last step; the run is a success only if it holds (and every output validated).",
+			"$ref": "#/$defs/Checkpoint"
+		},
+		"outcomeRules": {
+			"maxItems": 100,
+			"type": "array",
+			"items": { "$ref": "#/$defs/OutcomeRule" },
+			"description": "Runtime conditions specific to this capability; they override app-profile defaults by code."
+		},
+		"contentHash": {
+			"type": "string",
+			"pattern": "^sha256:[0-9a-f]{64}$",
+			"description": "\"sha256:<64 lowercase hex>\" over the canonical JSON of the artifact with contentHash excluded (keys sorted recursively). Detects any edit to a persisted artifact."
+		}
+	},
+	"required": [
+		"schemaVersion",
+		"id",
+		"version",
+		"title",
+		"summary",
+		"app",
+		"provenance",
+		"params",
+		"outputs",
+		"steps",
+		"successCondition",
+		"outcomeRules",
+		"contentHash"
+	],
+	"additionalProperties": false,
+	"description": "A capability artifact: a typed, versioned, deterministic program compiled from a successful discovery run and replayed with no model in the loop. Stores parameter references, never the concrete values used during discovery.",
+	"$defs": {
+		"Step": {
+			"oneOf": [
+				{
+					"type": "object",
+					"properties": {
+						"id": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+						},
+						"description": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 500,
+							"description": "What the step does and why, written for a reviewer and an operator (R2.7), e.g. \"Click Search to look up the member\". Never contains a concrete param value."
+						},
+						"phase": {
+							"type": "string",
+							"enum": ["login", "main"],
+							"description": "login: part of signing on (re-run once on session expiry); main: the capability itself. Login steps come first."
+						},
+						"risk": {
+							"type": "string",
+							"enum": ["read", "reversible", "irreversible"],
+							"description": "Risk class recorded by the compiler. Replay recomputes it from policy and takes the max of the two, so an edited artifact can never lower the risk of a step."
+						},
+						"checkpoint": {
+							"description": "The condition verified after the action. Required for screen-changing kinds (navigate, click, press, select, dismiss_dialog) — invariant 5.",
+							"$ref": "#/$defs/Checkpoint"
+						},
+						"timeoutMs": {
+							"description": "Upper bound for resolving the target and performing the action; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						},
+						"kind": { "type": "string", "const": "navigate" },
+						"route": {
+							"type": "string",
+							"maxLength": 2000,
+							"allOf": [{ "pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$" }, { "pattern": "^\\/(?!\\/)" }],
+							"description": "A route relative to the app origin, starting with \"/\", e.g. \"/member/detail?m={{memberId}}\". The origin is supplied at run time by the app profile, so the same artifact runs against any environment of the app and never carries a host name."
+						}
+					},
+					"required": ["id", "description", "phase", "risk", "kind", "route"],
+					"additionalProperties": false,
+					"description": "Load a route of the app (relative to the origin supplied at run time) in the top document."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"id": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+						},
+						"description": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 500,
+							"description": "What the step does and why, written for a reviewer and an operator (R2.7), e.g. \"Click Search to look up the member\". Never contains a concrete param value."
+						},
+						"phase": {
+							"type": "string",
+							"enum": ["login", "main"],
+							"description": "login: part of signing on (re-run once on session expiry); main: the capability itself. Login steps come first."
+						},
+						"risk": {
+							"type": "string",
+							"enum": ["read", "reversible", "irreversible"],
+							"description": "Risk class recorded by the compiler. Replay recomputes it from policy and takes the max of the two, so an edited artifact can never lower the risk of a step."
+						},
+						"checkpoint": {
+							"description": "The condition verified after the action. Required for screen-changing kinds (navigate, click, press, select, dismiss_dialog) — invariant 5.",
+							"$ref": "#/$defs/Checkpoint"
+						},
+						"timeoutMs": {
+							"description": "Upper bound for resolving the target and performing the action; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						},
+						"kind": { "type": "string", "const": "click" },
+						"target": { "$ref": "#/$defs/TargetRef" }
+					},
+					"required": ["id", "description", "phase", "risk", "kind", "target"],
+					"additionalProperties": false,
+					"description": "Click the target (a button, link or other control)."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"id": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+						},
+						"description": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 500,
+							"description": "What the step does and why, written for a reviewer and an operator (R2.7), e.g. \"Click Search to look up the member\". Never contains a concrete param value."
+						},
+						"phase": {
+							"type": "string",
+							"enum": ["login", "main"],
+							"description": "login: part of signing on (re-run once on session expiry); main: the capability itself. Login steps come first."
+						},
+						"risk": {
+							"type": "string",
+							"enum": ["read", "reversible", "irreversible"],
+							"description": "Risk class recorded by the compiler. Replay recomputes it from policy and takes the max of the two, so an edited artifact can never lower the risk of a step."
+						},
+						"checkpoint": {
+							"description": "The condition verified after the action. Required for screen-changing kinds (navigate, click, press, select, dismiss_dialog) — invariant 5.",
+							"$ref": "#/$defs/Checkpoint"
+						},
+						"timeoutMs": {
+							"description": "Upper bound for resolving the target and performing the action; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						},
+						"kind": { "type": "string", "const": "fill" },
+						"target": { "$ref": "#/$defs/TargetRef" },
+						"value": {
+							"description": "What to type. A param or credential reference, or a non-sensitive literal. A sensitive step refuses a literal, so no concrete PII or secret can live in the artifact (invariant 3).",
+							"$ref": "#/$defs/ValueExpr"
+						},
+						"sensitive": {
+							"type": "boolean",
+							"description": "Whether the typed value is sensitive: it is masked in evidence and redacted in logs. Must be true for a credential and for a sensitive param."
+						}
+					},
+					"required": ["id", "description", "phase", "risk", "kind", "target", "value", "sensitive"],
+					"additionalProperties": false,
+					"description": "Replace the content of a text input with a value."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"id": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+						},
+						"description": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 500,
+							"description": "What the step does and why, written for a reviewer and an operator (R2.7), e.g. \"Click Search to look up the member\". Never contains a concrete param value."
+						},
+						"phase": {
+							"type": "string",
+							"enum": ["login", "main"],
+							"description": "login: part of signing on (re-run once on session expiry); main: the capability itself. Login steps come first."
+						},
+						"risk": {
+							"type": "string",
+							"enum": ["read", "reversible", "irreversible"],
+							"description": "Risk class recorded by the compiler. Replay recomputes it from policy and takes the max of the two, so an edited artifact can never lower the risk of a step."
+						},
+						"checkpoint": {
+							"description": "The condition verified after the action. Required for screen-changing kinds (navigate, click, press, select, dismiss_dialog) — invariant 5.",
+							"$ref": "#/$defs/Checkpoint"
+						},
+						"timeoutMs": {
+							"description": "Upper bound for resolving the target and performing the action; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						},
+						"kind": { "type": "string", "const": "select" },
+						"target": { "$ref": "#/$defs/TargetRef" },
+						"option": {
+							"description": "The option to choose, matched by its visible label (then its value). A param or a literal; never a credential.",
+							"$ref": "#/$defs/ValueExpr"
+						}
+					},
+					"required": ["id", "description", "phase", "risk", "kind", "target", "option"],
+					"additionalProperties": false,
+					"description": "Choose an option in a dropdown/listbox."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"id": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+						},
+						"description": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 500,
+							"description": "What the step does and why, written for a reviewer and an operator (R2.7), e.g. \"Click Search to look up the member\". Never contains a concrete param value."
+						},
+						"phase": {
+							"type": "string",
+							"enum": ["login", "main"],
+							"description": "login: part of signing on (re-run once on session expiry); main: the capability itself. Login steps come first."
+						},
+						"risk": {
+							"type": "string",
+							"enum": ["read", "reversible", "irreversible"],
+							"description": "Risk class recorded by the compiler. Replay recomputes it from policy and takes the max of the two, so an edited artifact can never lower the risk of a step."
+						},
+						"checkpoint": {
+							"description": "The condition verified after the action. Required for screen-changing kinds (navigate, click, press, select, dismiss_dialog) — invariant 5.",
+							"$ref": "#/$defs/Checkpoint"
+						},
+						"timeoutMs": {
+							"description": "Upper bound for resolving the target and performing the action; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						},
+						"kind": { "type": "string", "const": "press" },
+						"target": {
+							"description": "Element to focus first; omitted = the currently focused element.",
+							"$ref": "#/$defs/TargetRef"
+						},
+						"key": {
+							"type": "string",
+							"enum": ["Enter", "Tab", "Escape"],
+							"description": "The key to press. Allowlisted: no free-form key chords, so a step cannot smuggle shortcuts."
+						}
+					},
+					"required": ["id", "description", "phase", "risk", "kind", "key"],
+					"additionalProperties": false,
+					"description": "Press a single allowlisted key."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"id": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+						},
+						"description": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 500,
+							"description": "What the step does and why, written for a reviewer and an operator (R2.7), e.g. \"Click Search to look up the member\". Never contains a concrete param value."
+						},
+						"phase": {
+							"type": "string",
+							"enum": ["login", "main"],
+							"description": "login: part of signing on (re-run once on session expiry); main: the capability itself. Login steps come first."
+						},
+						"risk": {
+							"type": "string",
+							"enum": ["read", "reversible", "irreversible"],
+							"description": "Risk class recorded by the compiler. Replay recomputes it from policy and takes the max of the two, so an edited artifact can never lower the risk of a step."
+						},
+						"checkpoint": {
+							"description": "The condition verified after the action. Required for screen-changing kinds (navigate, click, press, select, dismiss_dialog) — invariant 5.",
+							"$ref": "#/$defs/Checkpoint"
+						},
+						"timeoutMs": {
+							"description": "Upper bound for resolving the target and performing the action; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						},
+						"kind": { "type": "string", "const": "extract" },
+						"target": { "$ref": "#/$defs/TargetRef" },
+						"output": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^[a-z][a-zA-Z0-9]*$",
+							"description": "The declared output this step produces. Each output is extracted exactly once."
+						},
+						"parse": {
+							"oneOf": [
+								{
+									"type": "object",
+									"properties": {
+										"kind": { "type": "string", "const": "text" },
+										"pattern": {
+											"description": "ECMAScript regular expression searched in the element text; the first capture group (or the whole match when there is none) is the raw value. Omitted = the whole normalized text.",
+											"type": "string",
+											"minLength": 1,
+											"maxLength": 500
+										}
+									},
+									"required": ["kind"],
+									"additionalProperties": false,
+									"description": "The normalized text (whitespace collapsed and trimmed)."
+								},
+								{
+									"type": "object",
+									"properties": {
+										"kind": { "type": "string", "const": "decimal" },
+										"pattern": {
+											"description": "ECMAScript regular expression searched in the element text; the first capture group (or the whole match when there is none) is the raw value. Omitted = the whole normalized text.",
+											"type": "string",
+											"minLength": 1,
+											"maxLength": 500
+										}
+									},
+									"required": ["kind"],
+									"additionalProperties": false,
+									"description": "An exact decimal string: currency symbols, thousands separators and spaces are removed and a trailing minus or (…) becomes a leading \"-\". Never converted to a floating-point number."
+								},
+								{
+									"type": "object",
+									"properties": {
+										"kind": { "type": "string", "const": "integer" },
+										"pattern": {
+											"description": "ECMAScript regular expression searched in the element text; the first capture group (or the whole match when there is none) is the raw value. Omitted = the whole normalized text.",
+											"type": "string",
+											"minLength": 1,
+											"maxLength": 500
+										}
+									},
+									"required": ["kind"],
+									"additionalProperties": false,
+									"description": "A safe integer: thousands separators and spaces are removed before parsing."
+								}
+							],
+							"description": "How the element text becomes the output value. The result is then validated against the OutputSpec."
+						}
+					},
+					"required": ["id", "description", "phase", "risk", "kind", "target", "output", "parse"],
+					"additionalProperties": false,
+					"description": "Read the text of the target into a declared output. Reads only: never changes the screen."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"id": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+						},
+						"description": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 500,
+							"description": "What the step does and why, written for a reviewer and an operator (R2.7), e.g. \"Click Search to look up the member\". Never contains a concrete param value."
+						},
+						"phase": {
+							"type": "string",
+							"enum": ["login", "main"],
+							"description": "login: part of signing on (re-run once on session expiry); main: the capability itself. Login steps come first."
+						},
+						"risk": {
+							"type": "string",
+							"enum": ["read", "reversible", "irreversible"],
+							"description": "Risk class recorded by the compiler. Replay recomputes it from policy and takes the max of the two, so an edited artifact can never lower the risk of a step."
+						},
+						"checkpoint": {
+							"description": "The condition verified after the action. Required for screen-changing kinds (navigate, click, press, select, dismiss_dialog) — invariant 5.",
+							"$ref": "#/$defs/Checkpoint"
+						},
+						"timeoutMs": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000,
+							"description": "How long to wait before the step fails. Required: a wait is always bounded."
+						},
+						"kind": { "type": "string", "const": "wait" },
+						"until": { "description": "The condition to wait for.", "$ref": "#/$defs/Checkpoint" }
+					},
+					"required": ["id", "description", "phase", "risk", "timeoutMs", "kind", "until"],
+					"additionalProperties": false,
+					"description": "Wait, bounded, until a condition holds (e.g. a slow page has finished loading)."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"id": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+							"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+						},
+						"description": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 500,
+							"description": "What the step does and why, written for a reviewer and an operator (R2.7), e.g. \"Click Search to look up the member\". Never contains a concrete param value."
+						},
+						"phase": {
+							"type": "string",
+							"enum": ["login", "main"],
+							"description": "login: part of signing on (re-run once on session expiry); main: the capability itself. Login steps come first."
+						},
+						"risk": {
+							"type": "string",
+							"enum": ["read", "reversible", "irreversible"],
+							"description": "Risk class recorded by the compiler. Replay recomputes it from policy and takes the max of the two, so an edited artifact can never lower the risk of a step."
+						},
+						"checkpoint": {
+							"description": "The condition verified after the action. Required for screen-changing kinds (navigate, click, press, select, dismiss_dialog) — invariant 5.",
+							"$ref": "#/$defs/Checkpoint"
+						},
+						"timeoutMs": {
+							"description": "Upper bound for resolving the target and performing the action; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						},
+						"kind": { "type": "string", "const": "dismiss_dialog" },
+						"match": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 500,
+							"description": "Text the open native dialog (alert/confirm/prompt) message must contain (normalized substring). Any other dialog is not touched."
+						},
+						"action": {
+							"type": "string",
+							"enum": ["accept", "dismiss"],
+							"description": "accept: OK. dismiss: Cancel/close."
+						}
+					},
+					"required": ["id", "description", "phase", "risk", "kind", "match", "action"],
+					"additionalProperties": false,
+					"description": "Close an expected native dialog that the flow always raises at this point."
+				}
+			],
+			"description": "One deterministic step of a capability, discriminated on `kind`. Every step maps to one policy action type (invariant 2)."
+		},
+		"Checkpoint": {
+			"oneOf": [
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "element_visible" },
+						"target": { "$ref": "#/$defs/TargetRef" },
+						"timeoutMs": {
+							"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						}
+					},
+					"required": ["kind", "target"],
+					"additionalProperties": false,
+					"description": "Holds when the target resolves and is visible."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "element_absent" },
+						"target": { "$ref": "#/$defs/TargetRef" },
+						"timeoutMs": {
+							"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						}
+					},
+					"required": ["kind", "target"],
+					"additionalProperties": false,
+					"description": "Holds when the target does not resolve or is hidden (e.g. a spinner or dialog has gone)."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "text_present" },
+						"text": {
+							"type": "string",
+							"maxLength": 2000,
+							"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+							"description": "Text that must appear (normalized substring match); may use {{param}}."
+						},
+						"frame": { "description": "Frame to look in; omitted = any frame.", "$ref": "#/$defs/FrameScope" },
+						"timeoutMs": {
+							"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						}
+					},
+					"required": ["kind", "text"],
+					"additionalProperties": false,
+					"description": "Holds when the text is visible."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "text_absent" },
+						"text": {
+							"type": "string",
+							"maxLength": 2000,
+							"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+							"description": "Text that must not appear (normalized substring match)."
+						},
+						"frame": { "description": "Frame to look in; omitted = any frame.", "$ref": "#/$defs/FrameScope" },
+						"timeoutMs": {
+							"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						}
+					},
+					"required": ["kind", "text"],
+					"additionalProperties": false,
+					"description": "Holds when the text is not visible."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "url_matches" },
+						"route": {
+							"type": "string",
+							"maxLength": 2000,
+							"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+							"description": "Glob over the route relative to the app origin, e.g. \"**/member/detail*\". On a desktop surface: the screen/window identifier."
+						},
+						"timeoutMs": {
+							"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						}
+					},
+					"required": ["kind", "route"],
+					"additionalProperties": false,
+					"description": "Holds when the current route (top document, or the innermost frame for framesets) matches."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "title_matches" },
+						"title": {
+							"type": "string",
+							"maxLength": 2000,
+							"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+							"description": "Expected document/window title."
+						},
+						"match": {
+							"type": "string",
+							"enum": ["exact", "contains"],
+							"description": "exact: whole normalized title; contains: substring."
+						},
+						"timeoutMs": {
+							"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						}
+					},
+					"required": ["kind", "title", "match"],
+					"additionalProperties": false,
+					"description": "Holds when the document or window title matches."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "all_of" },
+						"checks": {
+							"minItems": 1,
+							"maxItems": 10,
+							"type": "array",
+							"items": {
+								"oneOf": [
+									{
+										"type": "object",
+										"properties": {
+											"kind": { "type": "string", "const": "element_visible" },
+											"target": { "$ref": "#/$defs/TargetRef" },
+											"timeoutMs": {
+												"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 300000
+											}
+										},
+										"required": ["kind", "target"],
+										"additionalProperties": false,
+										"description": "Holds when the target resolves and is visible."
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": { "type": "string", "const": "element_absent" },
+											"target": { "$ref": "#/$defs/TargetRef" },
+											"timeoutMs": {
+												"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 300000
+											}
+										},
+										"required": ["kind", "target"],
+										"additionalProperties": false,
+										"description": "Holds when the target does not resolve or is hidden (e.g. a spinner or dialog has gone)."
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": { "type": "string", "const": "text_present" },
+											"text": {
+												"type": "string",
+												"maxLength": 2000,
+												"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+												"description": "Text that must appear (normalized substring match); may use {{param}}."
+											},
+											"frame": {
+												"description": "Frame to look in; omitted = any frame.",
+												"$ref": "#/$defs/FrameScope"
+											},
+											"timeoutMs": {
+												"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 300000
+											}
+										},
+										"required": ["kind", "text"],
+										"additionalProperties": false,
+										"description": "Holds when the text is visible."
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": { "type": "string", "const": "text_absent" },
+											"text": {
+												"type": "string",
+												"maxLength": 2000,
+												"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+												"description": "Text that must not appear (normalized substring match)."
+											},
+											"frame": {
+												"description": "Frame to look in; omitted = any frame.",
+												"$ref": "#/$defs/FrameScope"
+											},
+											"timeoutMs": {
+												"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 300000
+											}
+										},
+										"required": ["kind", "text"],
+										"additionalProperties": false,
+										"description": "Holds when the text is not visible."
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": { "type": "string", "const": "url_matches" },
+											"route": {
+												"type": "string",
+												"maxLength": 2000,
+												"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+												"description": "Glob over the route relative to the app origin, e.g. \"**/member/detail*\". On a desktop surface: the screen/window identifier."
+											},
+											"timeoutMs": {
+												"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 300000
+											}
+										},
+										"required": ["kind", "route"],
+										"additionalProperties": false,
+										"description": "Holds when the current route (top document, or the innermost frame for framesets) matches."
+									},
+									{
+										"type": "object",
+										"properties": {
+											"kind": { "type": "string", "const": "title_matches" },
+											"title": {
+												"type": "string",
+												"maxLength": 2000,
+												"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+												"description": "Expected document/window title."
+											},
+											"match": {
+												"type": "string",
+												"enum": ["exact", "contains"],
+												"description": "exact: whole normalized title; contains: substring."
+											},
+											"timeoutMs": {
+												"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+												"type": "integer",
+												"minimum": 1,
+												"maximum": 300000
+											}
+										},
+										"required": ["kind", "title", "match"],
+										"additionalProperties": false,
+										"description": "Holds when the document or window title matches."
+									}
+								]
+							},
+							"description": "Leaf checkpoints that must all hold. all_of cannot be nested (depth 1)."
+						},
+						"timeoutMs": {
+							"description": "How long to wait for the checkpoint to hold before it fails; omitted = the engine default.",
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 300000
+						}
+					},
+					"required": ["kind", "checks"],
+					"additionalProperties": false,
+					"description": "Holds when every listed check holds at the same time."
+				}
+			],
+			"description": "A verifiable condition on the screen. Every screen-changing step is followed by one (invariant 5): \"the click did not throw\" is not success. Uses signals any surface can provide."
+		},
+		"TargetRef": {
+			"type": "object",
+			"properties": {
+				"description": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 300,
+					"description": "Human-readable name of the target, e.g. \"Search button in the member search form\". Shown to operators and in failure reports."
+				},
+				"frame": { "$ref": "#/$defs/FrameScope" },
+				"ladder": {
+					"minItems": 1,
+					"maxItems": 5,
+					"type": "array",
+					"items": { "$ref": "#/$defs/LocatorRung" },
+					"description": "Locator rungs in stability order (most stable first). The resolver tries each in turn inside `frame`; resolving on a later rung succeeds but is reported as drift."
+				}
+			},
+			"required": ["description", "frame", "ladder"],
+			"additionalProperties": false,
+			"description": "A UI element the artifact acts on or checks, independent of any one selector technology."
+		},
+		"FrameScope": {
+			"maxItems": 8,
+			"type": "array",
+			"items": {
+				"oneOf": [
+					{
+						"type": "object",
+						"properties": {
+							"kind": { "type": "string", "const": "by_name" },
+							"name": {
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 200,
+								"description": "The frame/iframe `name` attribute, e.g. \"content\"."
+							}
+						},
+						"required": ["kind", "name"],
+						"additionalProperties": false,
+						"description": "Preferred hop. Legacy framesets address frames by name (target=\"content\"), so the name is part of the app wiring and survives layout and URL changes."
+					},
+					{
+						"type": "object",
+						"properties": {
+							"kind": { "type": "string", "const": "by_url_path" },
+							"glob": {
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 500,
+								"description": "Glob over the frame document URL path, e.g. \"**/member/*.jsp\"."
+							}
+						},
+						"required": ["kind", "glob"],
+						"additionalProperties": false,
+						"description": "Fallback hop for unnamed frames: matches the frame by the path of the document it shows."
+					},
+					{
+						"type": "object",
+						"properties": {
+							"kind": { "type": "string", "const": "by_title" },
+							"title": {
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 200,
+								"description": "The frame `title` attribute or its document title."
+							}
+						},
+						"required": ["kind", "title"],
+						"additionalProperties": false,
+						"description": "Fallback hop when neither name nor URL is stable."
+					}
+				],
+				"description": "One step down the frame tree."
+			},
+			"description": "Ordered frame path from the top document to the document that holds the target; [] means the top document. On a non-web surface this names the window/pane path instead."
+		},
+		"LocatorRung": {
+			"oneOf": [
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "role" },
+						"role": {
+							"type": "string",
+							"pattern": "^[a-z]+$",
+							"description": "Accessibility role, e.g. \"button\", \"link\", \"textbox\", \"heading\"."
+						},
+						"name": {
+							"description": "Accessible name; may contain {{param}} placeholders.",
+							"type": "string",
+							"maxLength": 2000,
+							"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$"
+						},
+						"exact": {
+							"description": "true: the name must match exactly. Omitted/false: case-insensitive substring.",
+							"type": "boolean"
+						},
+						"rationale": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000,
+							"pattern": "\\S",
+							"description": "Why this rung identifies the target robustly (R2.3): which stable property it relies on and what change would break it."
+						},
+						"surface": {
+							"description": "Surface-tagged extras. Informational: the resolver never uses them as a primary rung, so the core rung stays expressible on a desktop surface (R7.1).",
+							"type": "object",
+							"properties": {
+								"web": {
+									"description": "Web-surface details.",
+									"type": "object",
+									"properties": {
+										"cssHint": {
+											"description": "A CSS selector recorded for diagnostics and drift reports only.",
+											"type": "string",
+											"minLength": 1,
+											"maxLength": 500
+										}
+									},
+									"additionalProperties": false
+								}
+							},
+							"additionalProperties": false
+						}
+					},
+					"required": ["kind", "role", "rationale"],
+					"additionalProperties": false,
+					"description": "Most stable rung: role + accessible name from the accessibility tree, which desktop UI automation trees also expose."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "label" },
+						"text": {
+							"type": "string",
+							"maxLength": 2000,
+							"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+							"description": "The label text associated with a form control."
+						},
+						"rationale": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000,
+							"pattern": "\\S",
+							"description": "Why this rung identifies the target robustly (R2.3): which stable property it relies on and what change would break it."
+						},
+						"surface": {
+							"description": "Surface-tagged extras. Informational: the resolver never uses them as a primary rung, so the core rung stays expressible on a desktop surface (R7.1).",
+							"type": "object",
+							"properties": {
+								"web": {
+									"description": "Web-surface details.",
+									"type": "object",
+									"properties": {
+										"cssHint": {
+											"description": "A CSS selector recorded for diagnostics and drift reports only.",
+											"type": "string",
+											"minLength": 1,
+											"maxLength": 500
+										}
+									},
+									"additionalProperties": false
+								}
+							},
+							"additionalProperties": false
+						}
+					},
+					"required": ["kind", "text", "rationale"],
+					"additionalProperties": false,
+					"description": "A form control found by its associated label."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "text" },
+						"text": {
+							"type": "string",
+							"maxLength": 2000,
+							"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+							"description": "The visible text of the element."
+						},
+						"match": {
+							"type": "string",
+							"enum": ["exact", "contains"],
+							"description": "exact: whole normalized text; contains: substring."
+						},
+						"rationale": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000,
+							"pattern": "\\S",
+							"description": "Why this rung identifies the target robustly (R2.3): which stable property it relies on and what change would break it."
+						},
+						"surface": {
+							"description": "Surface-tagged extras. Informational: the resolver never uses them as a primary rung, so the core rung stays expressible on a desktop surface (R7.1).",
+							"type": "object",
+							"properties": {
+								"web": {
+									"description": "Web-surface details.",
+									"type": "object",
+									"properties": {
+										"cssHint": {
+											"description": "A CSS selector recorded for diagnostics and drift reports only.",
+											"type": "string",
+											"minLength": 1,
+											"maxLength": 500
+										}
+									},
+									"additionalProperties": false
+								}
+							},
+							"additionalProperties": false
+						}
+					},
+					"required": ["kind", "text", "match", "rationale"],
+					"additionalProperties": false,
+					"description": "An element found by its visible text."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "structural" },
+						"anchor": {
+							"oneOf": [
+								{
+									"type": "object",
+									"properties": {
+										"kind": { "type": "string", "const": "table_cell_relative" },
+										"headerText": {
+											"type": "string",
+											"maxLength": 2000,
+											"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+											"description": "Text of the header/label cell used as the anchor."
+										},
+										"direction": {
+											"type": "string",
+											"enum": ["right", "below"],
+											"description": "Where the target cell sits relative to the anchor cell."
+										},
+										"offset": {
+											"type": "integer",
+											"minimum": 1,
+											"maximum": 20,
+											"description": "How many cells away from the anchor (1 = adjacent)."
+										}
+									},
+									"required": ["kind", "headerText", "direction", "offset"],
+									"additionalProperties": false,
+									"description": "The cell beside or below a labelled cell. Robust for nested layout tables where values have no ids or labels."
+								},
+								{
+									"type": "object",
+									"properties": {
+										"kind": { "type": "string", "const": "form_row" },
+										"labelText": {
+											"type": "string",
+											"maxLength": 2000,
+											"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+											"description": "Text in the row that labels the control."
+										},
+										"control": {
+											"type": "string",
+											"enum": ["input", "select", "button"],
+											"description": "The kind of control in that row."
+										}
+									},
+									"required": ["kind", "labelText", "control"],
+									"additionalProperties": false,
+									"description": "The control in the table/form row whose label cell has the given text (unlabelled legacy forms)."
+								},
+								{
+									"type": "object",
+									"properties": {
+										"kind": { "type": "string", "const": "nth_in_container" },
+										"containerText": {
+											"description": "Text inside the nearest container (form/table) to scope to; omitted = the whole frame document.",
+											"type": "string",
+											"maxLength": 2000,
+											"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$"
+										},
+										"element": {
+											"type": "string",
+											"enum": ["input", "select", "button", "link", "cell", "row"],
+											"description": "Kind of element to count."
+										},
+										"index": {
+											"type": "integer",
+											"minimum": 0,
+											"maximum": 500,
+											"description": "0-based position among matching elements in the container."
+										}
+									},
+									"required": ["kind", "element", "index"],
+									"additionalProperties": false,
+									"description": "LAST RESORT and BRITTLE: breaks whenever an element is added or reordered. Use only when no semantic rung exists; replay reports drift when it is the rung that resolved."
+								}
+							],
+							"description": "How the target is found relative to page structure."
+						},
+						"rationale": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000,
+							"pattern": "\\S",
+							"description": "Why this rung identifies the target robustly (R2.3): which stable property it relies on and what change would break it."
+						},
+						"surface": {
+							"description": "Surface-tagged extras. Informational: the resolver never uses them as a primary rung, so the core rung stays expressible on a desktop surface (R7.1).",
+							"type": "object",
+							"properties": {
+								"web": {
+									"description": "Web-surface details.",
+									"type": "object",
+									"properties": {
+										"cssHint": {
+											"description": "A CSS selector recorded for diagnostics and drift reports only.",
+											"type": "string",
+											"minLength": 1,
+											"maxLength": 500
+										}
+									},
+									"additionalProperties": false
+								}
+							},
+							"additionalProperties": false
+						}
+					},
+					"required": ["kind", "anchor", "rationale"],
+					"additionalProperties": false,
+					"description": "An element found by its position relative to stable text in the page structure."
+				}
+			],
+			"description": "One rung of the locator ladder. Rungs are tried in order and the first unique match wins. A visual-anchor rung (image/OCR match) is a design-only extension for non-DOM surfaces and is not part of v1."
+		},
+		"ValueExpr": {
+			"oneOf": [
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "param" },
+						"name": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^[a-z][a-zA-Z0-9]*$",
+							"description": "The declared param whose run-time value is used."
+						}
+					},
+					"required": ["kind", "name"],
+					"additionalProperties": false,
+					"description": "The value of a declared capability parameter, supplied by the caller at run time."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "literal" },
+						"value": {
+							"type": "string",
+							"maxLength": 1000,
+							"description": "The constant value. Must be non-sensitive."
+						}
+					},
+					"required": ["kind", "value"],
+					"additionalProperties": false,
+					"description": "A constant baked into the artifact (e.g. an option value \"savings\"). Only for non-sensitive values: a step that marks its value sensitive refuses a literal (enforced by the step schema), so discovered PII can never be stored here."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "credential" },
+						"ref": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+							"description": "Name of a credential held outside the artifact (resolved at run time from the environment/secret store), e.g. \"mockbank-operator\". It is a reference, never the secret itself."
+						},
+						"field": {
+							"type": "string",
+							"enum": ["username", "password"],
+							"description": "Which part of the referenced credential to use."
+						}
+					},
+					"required": ["kind", "ref", "field"],
+					"additionalProperties": false,
+					"description": "A field of a credential resolved at run time from outside the artifact. The secret is never stored."
+				}
+			],
+			"description": "The only way a step carries a value: a param reference, a non-sensitive literal, or a credential reference."
+		},
+		"OutcomeRule": {
+			"type": "object",
+			"properties": {
+				"code": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+					"description": "Outcome/condition code: snake_case, e.g. \"member_not_found\". Stable; calling agents branch on it."
+				},
+				"class": {
+					"type": "string",
+					"enum": ["business_outcome", "recoverable", "failure"],
+					"description": "How a recognised condition is handled. business_outcome: a valid answer returned to the caller (e.g. member_not_found), never a failure. recoverable: handled inside the run by a bounded recovery and logged, never returned. failure: the run stops with evidence (or escalates to a human)."
+				},
+				"description": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 500,
+					"description": "What the condition means for the caller and the reviewer (R2.7)."
+				},
+				"signature": {
+					"oneOf": [
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "text_present" },
+								"text": {
+									"type": "string",
+									"minLength": 1,
+									"maxLength": 500,
+									"description": "Text that appears on the screen when the condition holds, e.g. \"No records match your search criteria\"."
+								},
+								"frame": { "description": "Frame to look in; omitted = any frame.", "$ref": "#/$defs/FrameScope" }
+							},
+							"required": ["kind", "text"],
+							"additionalProperties": false,
+							"description": "The condition shows a fixed message somewhere on the screen."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "title_matches" },
+								"title": {
+									"type": "string",
+									"minLength": 1,
+									"maxLength": 500,
+									"description": "Text the document/window title contains, e.g. \"Server Error\"."
+								},
+								"frame": {
+									"description": "Frame whose document title is checked; omitted = the top document or any frame document.",
+									"$ref": "#/$defs/FrameScope"
+								}
+							},
+							"required": ["kind", "title"],
+							"additionalProperties": false,
+							"description": "The condition replaces the page, recognisable by its title."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "route_matches" },
+								"route": {
+									"type": "string",
+									"minLength": 1,
+									"maxLength": 500,
+									"description": "Glob over the route relative to the app origin, e.g. \"**/login*\". On a desktop surface: the screen id."
+								}
+							},
+							"required": ["kind", "route"],
+							"additionalProperties": false,
+							"description": "The app has moved to a known route (e.g. back to the sign-on page)."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "dialog_text" },
+								"text": {
+									"type": "string",
+									"minLength": 1,
+									"maxLength": 500,
+									"description": "Text the native dialog (alert/confirm/prompt) message contains, e.g. \"Scheduled maintenance\"."
+								}
+							},
+							"required": ["kind", "text"],
+							"additionalProperties": false,
+							"description": "A native dialog with a known message is open."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "http_status" },
+								"min": {
+									"type": "integer",
+									"minimum": 100,
+									"maximum": 599,
+									"description": "Lowest matching status, inclusive."
+								},
+								"max": {
+									"type": "integer",
+									"minimum": 100,
+									"maximum": 599,
+									"description": "Highest matching status, inclusive."
+								}
+							},
+							"required": ["kind", "min", "max"],
+							"additionalProperties": false,
+							"description": "The last document load (top document or frame) returned a status in the range, e.g. 500–599 for a failed load. Surfaces without HTTP report the equivalent load failure."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "any_of" },
+								"signatures": {
+									"minItems": 1,
+									"maxItems": 10,
+									"type": "array",
+									"items": {
+										"oneOf": [
+											{
+												"type": "object",
+												"properties": {
+													"kind": { "type": "string", "const": "text_present" },
+													"text": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 500,
+														"description": "Text that appears on the screen when the condition holds, e.g. \"No records match your search criteria\"."
+													},
+													"frame": {
+														"description": "Frame to look in; omitted = any frame.",
+														"$ref": "#/$defs/FrameScope"
+													}
+												},
+												"required": ["kind", "text"],
+												"additionalProperties": false,
+												"description": "The condition shows a fixed message somewhere on the screen."
+											},
+											{
+												"type": "object",
+												"properties": {
+													"kind": { "type": "string", "const": "title_matches" },
+													"title": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 500,
+														"description": "Text the document/window title contains, e.g. \"Server Error\"."
+													},
+													"frame": {
+														"description": "Frame whose document title is checked; omitted = the top document or any frame document.",
+														"$ref": "#/$defs/FrameScope"
+													}
+												},
+												"required": ["kind", "title"],
+												"additionalProperties": false,
+												"description": "The condition replaces the page, recognisable by its title."
+											},
+											{
+												"type": "object",
+												"properties": {
+													"kind": { "type": "string", "const": "route_matches" },
+													"route": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 500,
+														"description": "Glob over the route relative to the app origin, e.g. \"**/login*\". On a desktop surface: the screen id."
+													}
+												},
+												"required": ["kind", "route"],
+												"additionalProperties": false,
+												"description": "The app has moved to a known route (e.g. back to the sign-on page)."
+											},
+											{
+												"type": "object",
+												"properties": {
+													"kind": { "type": "string", "const": "dialog_text" },
+													"text": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 500,
+														"description": "Text the native dialog (alert/confirm/prompt) message contains, e.g. \"Scheduled maintenance\"."
+													}
+												},
+												"required": ["kind", "text"],
+												"additionalProperties": false,
+												"description": "A native dialog with a known message is open."
+											},
+											{
+												"type": "object",
+												"properties": {
+													"kind": { "type": "string", "const": "http_status" },
+													"min": {
+														"type": "integer",
+														"minimum": 100,
+														"maximum": 599,
+														"description": "Lowest matching status, inclusive."
+													},
+													"max": {
+														"type": "integer",
+														"minimum": 100,
+														"maximum": 599,
+														"description": "Highest matching status, inclusive."
+													}
+												},
+												"required": ["kind", "min", "max"],
+												"additionalProperties": false,
+												"description": "The last document load (top document or frame) returned a status in the range, e.g. 500–599 for a failed load. Surfaces without HTTP report the equivalent load failure."
+											}
+										]
+									},
+									"description": "Leaf signatures; the condition holds when at least one matches. any_of cannot be nested."
+								}
+							},
+							"required": ["kind", "signatures"],
+							"additionalProperties": false,
+							"description": "Any of several signals identifies the condition (e.g. a title OR a body text)."
+						}
+					],
+					"description": "How a runtime condition is recognised from an observation, discriminated on `kind`. Evaluated deterministically by replay; no model is involved."
+				},
+				"scope": {
+					"anyOf": [
+						{
+							"type": "string",
+							"const": "any_step",
+							"description": "The rule is checked before and after every step."
+						},
+						{
+							"minItems": 1,
+							"maxItems": 100,
+							"type": "array",
+							"items": {
+								"type": "string",
+								"maxLength": 64,
+								"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+								"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+							},
+							"description": "The rule is checked only around these steps (e.g. not-found only after the Search click)."
+						}
+					],
+					"description": "Where the rule applies."
+				},
+				"message": {
+					"description": "Element whose text becomes the result message. The text passes the redaction layer before it reaches any sink; omitted = the description is used.",
+					"$ref": "#/$defs/TargetRef"
+				},
+				"recovery": {
+					"description": "Required when class is recoverable; forbidden otherwise.",
+					"oneOf": [
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "dismiss_dialog" },
+								"action": {
+									"type": "string",
+									"enum": ["accept", "dismiss"],
+									"description": "accept: OK. dismiss: Cancel/close."
+								}
+							},
+							"required": ["kind", "action"],
+							"additionalProperties": false,
+							"description": "Close the recognised native dialog, then continue the current step."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "click_through" },
+								"target": {
+									"description": "The control that closes the interstitial, e.g. a \"Continue\" link.",
+									"$ref": "#/$defs/TargetRef"
+								}
+							},
+							"required": ["kind", "target"],
+							"additionalProperties": false,
+							"description": "Click past an HTML interstitial (notice page, banner), then re-verify the current step."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "retry" },
+								"max": {
+									"type": "integer",
+									"minimum": 1,
+									"maximum": 5,
+									"description": "Maximum number of retries of the current step. Always bounded."
+								},
+								"backoffMs": {
+									"type": "integer",
+									"minimum": 0,
+									"maximum": 60000,
+									"description": "Delay before each retry, in milliseconds."
+								}
+							},
+							"required": ["kind", "max", "backoffMs"],
+							"additionalProperties": false,
+							"description": "Re-run the current step (e.g. after a failed load). Never used for an irreversible step."
+						},
+						{
+							"type": "object",
+							"properties": { "kind": { "type": "string", "const": "reauth" } },
+							"required": ["kind"],
+							"additionalProperties": false,
+							"description": "Sign on again: re-run the login-phase steps once, then the main steps up to the current one. Refused (session_lost) if an irreversible step already ran."
+						}
+					]
+				}
+			},
+			"required": ["code", "class", "description", "signature", "scope"],
+			"additionalProperties": false,
+			"description": "Recognises one runtime condition and says how it is classified and handled. Resolution order at replay: artifact rule, then app profile default, then engine catalog default."
+		}
+	}
+}

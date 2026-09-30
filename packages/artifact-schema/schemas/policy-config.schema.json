@@ -1,0 +1,173 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"version": {
+			"type": "string",
+			"pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+			"description": "Version of this policy configuration."
+		},
+		"allow": {
+			"type": "object",
+			"properties": {
+				"origins": {
+					"minItems": 1,
+					"maxItems": 20,
+					"type": "array",
+					"items": {
+						"type": "string",
+						"maxLength": 300,
+						"description": "A URL origin such as \"http://127.0.0.1:4010\" (scheme://host[:port], no path), or an environment token such as \"${MOCKBANK_ORIGIN}\" that the loader expands before use."
+					},
+					"description": "Exact origins the system may act on. ${ENV} tokens are expanded by the loader, not by the schema. Anything else is denied."
+				},
+				"routes": {
+					"maxItems": 20,
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"origin": {
+								"type": "string",
+								"maxLength": 300,
+								"description": "The allowed origin this rule applies to; must be listed in allow.origins."
+							},
+							"include": {
+								"minItems": 1,
+								"maxItems": 100,
+								"type": "array",
+								"items": {
+									"type": "string",
+									"maxLength": 300,
+									"pattern": "^\\/\\S*$",
+									"description": "A path glob relative to an origin, starting with \"/\": \"*\" matches within one segment, \"**\" across segments, e.g. \"/member/**\". No whitespace, no host."
+								},
+								"description": "Globs of routes the system may visit on this origin."
+							},
+							"exclude": {
+								"maxItems": 100,
+								"type": "array",
+								"items": {
+									"type": "string",
+									"maxLength": 300,
+									"pattern": "^\\/\\S*$",
+									"description": "A path glob relative to an origin, starting with \"/\": \"*\" matches within one segment, \"**\" across segments, e.g. \"/member/**\". No whitespace, no host."
+								},
+								"description": "Globs that are denied even when included, e.g. \"/__admin/**\". Required (may be empty) so a denial is always explicit."
+							}
+						},
+						"required": ["origin", "include", "exclude"],
+						"additionalProperties": false,
+						"description": "Route allowlist for one origin. A route is allowed when it matches an include glob and no exclude glob."
+					},
+					"description": "Route allowlist per origin."
+				},
+				"actions": {
+					"minItems": 1,
+					"maxItems": 50,
+					"type": "array",
+					"items": {
+						"type": "string",
+						"enum": ["navigate", "click", "fill", "select", "press", "extract", "wait", "dismiss_dialog"],
+						"description": "The kind of action a step performs. Discriminates the Step union."
+					},
+					"description": "Action kinds that may run at all. An action kind not listed is denied."
+				}
+			},
+			"required": ["origins", "routes", "actions"],
+			"additionalProperties": false,
+			"description": "The allowlist (R6.1): origins, routes and action kinds."
+		},
+		"irreversible": {
+			"type": "object",
+			"properties": {
+				"controlNamePatterns": {
+					"maxItems": 50,
+					"type": "array",
+					"items": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 500,
+						"description": "Regex source matched against the target control name."
+					},
+					"description": "Controls whose accessible name matches are irreversible (e.g. Confirm, Submit), whatever the declared risk."
+				},
+				"routes": {
+					"maxItems": 50,
+					"type": "array",
+					"items": {
+						"type": "string",
+						"maxLength": 300,
+						"pattern": "^\\/\\S*$",
+						"description": "A path glob relative to an origin, starting with \"/\": \"*\" matches within one segment, \"**\" across segments, e.g. \"/member/**\". No whitespace, no host."
+					},
+					"description": "Routes on which any screen-changing action is irreversible, e.g. \"/subaccount/confirm\"."
+				}
+			},
+			"required": ["controlNamePatterns", "routes"],
+			"additionalProperties": false,
+			"description": "How the policy recognises irreversible actions. Risk is only ever raised by these, never lowered."
+		},
+		"redaction": {
+			"type": "object",
+			"properties": {
+				"patterns": {
+					"maxItems": 50,
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"name": {
+								"type": "string",
+								"maxLength": 64,
+								"pattern": "^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*$",
+								"description": "Pattern name, e.g. \"ssn\" or \"member-number\"; unique."
+							},
+							"regex": {
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 500,
+								"description": "ECMAScript regex source of values to mask (the redactor adds the \"g\" flag). Must not match \"\"."
+							},
+							"mask": {
+								"type": "string",
+								"enum": ["full", "keep_last_2", "keep_last_4"],
+								"description": "full: replace the whole match. keep_last_2 / keep_last_4: mask all but the last 2 / 4 characters."
+							}
+						},
+						"required": ["name", "regex", "mask"],
+						"additionalProperties": false,
+						"description": "A redaction rule for a class of sensitive values (SSN-like, account-number-like, member-number-like)."
+					},
+					"description": "Regex rules; names are unique."
+				},
+				"terms": {
+					"maxItems": 500,
+					"type": "array",
+					"items": { "type": "string", "minLength": 2, "maxLength": 200 },
+					"description": "Literal terms to mask wherever they appear, e.g. the synthetic member names of the mock bank."
+				}
+			},
+			"required": ["patterns", "terms"],
+			"additionalProperties": false,
+			"description": "Redaction rules applied before any sink (invariant 3), in addition to known sensitive values."
+		},
+		"approval": {
+			"type": "object",
+			"properties": {
+				"expiresMs": {
+					"type": "integer",
+					"minimum": 1,
+					"maximum": 86400000,
+					"description": "How long an approval request stays answerable, in milliseconds (at most 24 h)."
+				}
+			},
+			"required": ["expiresMs"],
+			"additionalProperties": false,
+			"description": "Approval settings for irreversible actions."
+		}
+	},
+	"required": ["version", "allow", "irreversible", "redaction", "approval"],
+	"additionalProperties": false,
+	"description": "The action policy (R6): what the system may touch, which actions are irreversible, and what must be redacted. Every agent, replay and human action is checked against it (invariant 2)."
+}

@@ -1,0 +1,645 @@
+{
+	"steps": [
+		{
+			"digestAfter": "07e9320eaa0095d8990fabbdf509cae3dc4da3ae2198c8297ca8fbee7a0fb237",
+			"diff": {
+				"loadedFrame": ["content"],
+				"titleChanges": [
+					{
+						"frame": [],
+						"before": "",
+						"after": "CoreOne 7.4",
+						"visibleSegments": []
+					},
+					{
+						"frame": ["banner"],
+						"before": null,
+						"after": "CoreOne 7.4",
+						"visibleSegments": ["CoreOne 7.4"]
+					},
+					{
+						"frame": ["nav"],
+						"before": null,
+						"after": "Menu",
+						"visibleSegments": ["Menu"]
+					},
+					{
+						"frame": ["content"],
+						"before": null,
+						"after": "CoreOne - Sign On",
+						"visibleSegments": ["Sign On"]
+					}
+				],
+				"headingsAdded": [],
+				"elementsAdded": [
+					{
+						"frame": ["nav"],
+						"role": "link",
+						"name": "Member Search"
+					},
+					{
+						"frame": ["nav"],
+						"role": "link",
+						"name": "About CoreOne"
+					},
+					{
+						"frame": ["nav"],
+						"role": "link",
+						"name": "Sign Off"
+					},
+					{
+						"frame": ["content"],
+						"role": "button",
+						"name": "Sign On"
+					}
+				],
+				"routeChanges": [
+					{
+						"frame": [],
+						"before": null,
+						"after": "/"
+					},
+					{
+						"frame": ["banner"],
+						"before": null,
+						"after": "/banner"
+					},
+					{
+						"frame": ["nav"],
+						"before": null,
+						"after": "/nav"
+					},
+					{
+						"frame": ["content"],
+						"before": null,
+						"after": "/login"
+					}
+				],
+				"presentTexts": [
+					{
+						"frame": ["banner"],
+						"text": "CoreOne 7.4"
+					},
+					{
+						"frame": ["nav"],
+						"text": "Menu"
+					},
+					{
+						"frame": ["content"],
+						"text": "Sign On"
+					}
+				],
+				"dialogOpened": false,
+				"dialogClosed": false
+			},
+			"actor": "agent",
+			"action": {
+				"kind": "navigate",
+				"route": "/"
+			},
+			"reason": "Open the target entry page before the first observation (the loop does this itself).",
+			"pageRoute": "/",
+			"digestBefore": "5899f68e40f77045bd0a29388b4fc1761f6294dea56219e58821c641f45f65ea",
+			"fingerprint": null,
+			"verdict": "ok",
+			"index": 0
+		},
+		{
+			"digestAfter": "07e9320eaa0095d8990fabbdf509cae3dc4da3ae2198c8297ca8fbee7a0fb237",
+			"diff": {
+				"loadedFrame": ["content"],
+				"titleChanges": [],
+				"headingsAdded": [],
+				"elementsAdded": [],
+				"routeChanges": [],
+				"presentTexts": [
+					{
+						"frame": ["banner"],
+						"text": "CoreOne 7.4"
+					},
+					{
+						"frame": ["nav"],
+						"text": "Menu"
+					},
+					{
+						"frame": ["content"],
+						"text": "Sign On"
+					}
+				],
+				"dialogOpened": false,
+				"dialogClosed": false
+			},
+			"actor": "agent",
+			"action": {
+				"kind": "navigate",
+				"route": "/"
+			},
+			"reason": "Open the application entry page.",
+			"pageRoute": "/",
+			"digestBefore": "07e9320eaa0095d8990fabbdf509cae3dc4da3ae2198c8297ca8fbee7a0fb237",
+			"fingerprint": null,
+			"verdict": "ok",
+			"index": 1
+		},
+		{
+			"digestAfter": "8d9659123aeb999b7feb8af1d8910f1070dba069498d63c4846263f402dc37c0",
+			"diff": {
+				"loadedFrame": null,
+				"titleChanges": [],
+				"headingsAdded": [],
+				"elementsAdded": [],
+				"routeChanges": [],
+				"presentTexts": [
+					{
+						"frame": ["banner"],
+						"text": "CoreOne 7.4"
+					},
+					{
+						"frame": ["nav"],
+						"text": "Menu"
+					},
+					{
+						"frame": ["content"],
+						"text": "Sign On"
+					}
+				],
+				"dialogOpened": false,
+				"dialogClosed": false
+			},
+			"actor": "agent",
+			"action": {
+				"kind": "fill",
+				"value": {
+					"kind": "credential",
+					"field": "username"
+				},
+				"sensitive": true
+			},
+			"reason": "Enter the operator user ID on the Sign On form.",
+			"pageRoute": "/login",
+			"digestBefore": "07e9320eaa0095d8990fabbdf509cae3dc4da3ae2198c8297ca8fbee7a0fb237",
+			"fingerprint": {
+				"role": "textbox",
+				"name": "",
+				"tag": "input",
+				"nameAttribute": "txtUser",
+				"inputType": "text",
+				"labelCellText": "User ID",
+				"rowHeaderText": "User ID",
+				"columnHeaderText": null,
+				"container": {
+					"element": "input",
+					"index": 0,
+					"containerText": "Sign On"
+				},
+				"navigatesTo": "http://bank.test/login",
+				"visibleText": "",
+				"framePath": ["content"],
+				"frameScope": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"verdict": "ok",
+			"index": 2
+		},
+		{
+			"digestAfter": "e29c09f622cc9462f90c9d1a105b7f8c446ed5312a3a3cfd9af3271d97296ac6",
+			"diff": {
+				"loadedFrame": null,
+				"titleChanges": [],
+				"headingsAdded": [],
+				"elementsAdded": [],
+				"routeChanges": [],
+				"presentTexts": [
+					{
+						"frame": ["banner"],
+						"text": "CoreOne 7.4"
+					},
+					{
+						"frame": ["nav"],
+						"text": "Menu"
+					},
+					{
+						"frame": ["content"],
+						"text": "Sign On"
+					}
+				],
+				"dialogOpened": false,
+				"dialogClosed": false
+			},
+			"actor": "agent",
+			"action": {
+				"kind": "fill",
+				"value": {
+					"kind": "credential",
+					"field": "password"
+				},
+				"sensitive": true
+			},
+			"reason": "Enter the operator password.",
+			"pageRoute": "/login",
+			"digestBefore": "8d9659123aeb999b7feb8af1d8910f1070dba069498d63c4846263f402dc37c0",
+			"fingerprint": {
+				"role": "textbox",
+				"name": "",
+				"tag": "input",
+				"nameAttribute": "txtPwd",
+				"inputType": "password",
+				"labelCellText": "Password",
+				"rowHeaderText": "Password",
+				"columnHeaderText": null,
+				"container": {
+					"element": "input",
+					"index": 1,
+					"containerText": "Sign On"
+				},
+				"navigatesTo": "http://bank.test/login",
+				"visibleText": "",
+				"framePath": ["content"],
+				"frameScope": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"verdict": "ok",
+			"index": 3
+		},
+		{
+			"digestAfter": "59eb0a99f01bf45be83152d17be61c4df44d3de2d9da1698457316ff86c70ab3",
+			"diff": {
+				"loadedFrame": ["content"],
+				"titleChanges": [
+					{
+						"frame": ["content"],
+						"before": "CoreOne - Sign On",
+						"after": "CoreOne - Member Search",
+						"visibleSegments": ["Member Search"]
+					}
+				],
+				"headingsAdded": [],
+				"elementsAdded": [
+					{
+						"frame": ["content"],
+						"role": "button",
+						"name": "Search"
+					}
+				],
+				"routeChanges": [
+					{
+						"frame": ["content"],
+						"before": "/login",
+						"after": "/member/search"
+					}
+				],
+				"presentTexts": [
+					{
+						"frame": ["banner"],
+						"text": "CoreOne 7.4"
+					},
+					{
+						"frame": ["nav"],
+						"text": "Menu"
+					},
+					{
+						"frame": ["content"],
+						"text": "Member Search"
+					}
+				],
+				"dialogOpened": false,
+				"dialogClosed": false
+			},
+			"actor": "agent",
+			"action": {
+				"kind": "click"
+			},
+			"reason": "Submit the Sign On form.",
+			"pageRoute": "/login",
+			"digestBefore": "e29c09f622cc9462f90c9d1a105b7f8c446ed5312a3a3cfd9af3271d97296ac6",
+			"fingerprint": {
+				"role": "button",
+				"name": "Sign On",
+				"tag": "input",
+				"nameAttribute": "btnSignOn",
+				"inputType": "submit",
+				"labelCellText": null,
+				"rowHeaderText": null,
+				"columnHeaderText": "Sign On",
+				"container": {
+					"element": "button",
+					"index": 0,
+					"containerText": "Sign On"
+				},
+				"navigatesTo": "http://bank.test/login",
+				"visibleText": "Sign On",
+				"framePath": ["content"],
+				"frameScope": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"verdict": "ok",
+			"index": 4
+		},
+		{
+			"digestAfter": "d654b58ea6f3b13ed9d2f031544b5649a65dc5368835255b166e1071c2d90976",
+			"diff": {
+				"loadedFrame": null,
+				"titleChanges": [],
+				"headingsAdded": [],
+				"elementsAdded": [],
+				"routeChanges": [],
+				"presentTexts": [
+					{
+						"frame": ["banner"],
+						"text": "CoreOne 7.4"
+					},
+					{
+						"frame": ["nav"],
+						"text": "Menu"
+					},
+					{
+						"frame": ["content"],
+						"text": "Member Search"
+					}
+				],
+				"dialogOpened": false,
+				"dialogClosed": false
+			},
+			"actor": "agent",
+			"action": {
+				"kind": "fill",
+				"value": {
+					"kind": "param",
+					"name": "memberId"
+				},
+				"sensitive": true
+			},
+			"reason": "Enter the member number on Member Search.",
+			"pageRoute": "/member/search",
+			"digestBefore": "59eb0a99f01bf45be83152d17be61c4df44d3de2d9da1698457316ff86c70ab3",
+			"fingerprint": {
+				"role": "textbox",
+				"name": "",
+				"tag": "input",
+				"nameAttribute": "txt1",
+				"inputType": "text",
+				"labelCellText": "Member #",
+				"rowHeaderText": "Member #",
+				"columnHeaderText": null,
+				"container": {
+					"element": "input",
+					"index": 0,
+					"containerText": "Member Search"
+				},
+				"navigatesTo": "http://bank.test/member/detail",
+				"visibleText": "",
+				"framePath": ["content"],
+				"frameScope": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"verdict": "ok",
+			"index": 5
+		},
+		{
+			"digestAfter": "8bd0c8cb9d10e9e8c31989b5c68d61e8a46582d468e6fc660636c1ab08fe1fa0",
+			"diff": {
+				"loadedFrame": ["content"],
+				"titleChanges": [
+					{
+						"frame": ["content"],
+						"before": "CoreOne - Member Search",
+						"after": "CoreOne - Member Inquiry",
+						"visibleSegments": ["Member Inquiry"]
+					}
+				],
+				"headingsAdded": [],
+				"elementsAdded": [
+					{
+						"frame": ["content"],
+						"role": "link",
+						"name": "Open Sub-Account"
+					}
+				],
+				"routeChanges": [
+					{
+						"frame": ["content"],
+						"before": "/member/search",
+						"after": "/member/detail"
+					}
+				],
+				"presentTexts": [
+					{
+						"frame": ["banner"],
+						"text": "CoreOne 7.4"
+					},
+					{
+						"frame": ["nav"],
+						"text": "Menu"
+					},
+					{
+						"frame": ["content"],
+						"text": "Member Inquiry"
+					}
+				],
+				"dialogOpened": false,
+				"dialogClosed": false
+			},
+			"actor": "agent",
+			"action": {
+				"kind": "click"
+			},
+			"reason": "Search for the member.",
+			"pageRoute": "/member/search",
+			"digestBefore": "d654b58ea6f3b13ed9d2f031544b5649a65dc5368835255b166e1071c2d90976",
+			"fingerprint": {
+				"role": "button",
+				"name": "Search",
+				"tag": "input",
+				"nameAttribute": "btnGo",
+				"inputType": "submit",
+				"labelCellText": null,
+				"rowHeaderText": null,
+				"columnHeaderText": "Member Search",
+				"container": {
+					"element": "button",
+					"index": 0,
+					"containerText": "Member Search"
+				},
+				"navigatesTo": "http://bank.test/member/detail",
+				"visibleText": "Search",
+				"framePath": ["content"],
+				"frameScope": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"verdict": "ok",
+			"index": 6
+		},
+		{
+			"digestAfter": "8bd0c8cb9d10e9e8c31989b5c68d61e8a46582d468e6fc660636c1ab08fe1fa0",
+			"diff": {
+				"loadedFrame": null,
+				"titleChanges": [],
+				"headingsAdded": [],
+				"elementsAdded": [],
+				"routeChanges": [],
+				"presentTexts": [
+					{
+						"frame": ["banner"],
+						"text": "CoreOne 7.4"
+					},
+					{
+						"frame": ["nav"],
+						"text": "Menu"
+					},
+					{
+						"frame": ["content"],
+						"text": "Member Inquiry"
+					}
+				],
+				"dialogOpened": false,
+				"dialogClosed": false
+			},
+			"actor": "agent",
+			"action": {
+				"kind": "extract",
+				"output": "savingsBalance"
+			},
+			"reason": "Read the balance next to Share Savings on Member Inquiry.",
+			"pageRoute": "/member/detail?txt1={{memberId}}&btnGo=Search",
+			"digestBefore": "8bd0c8cb9d10e9e8c31989b5c68d61e8a46582d468e6fc660636c1ab08fe1fa0",
+			"fingerprint": {
+				"role": "cell",
+				"name": "[REDACTED]",
+				"tag": "td",
+				"nameAttribute": null,
+				"inputType": null,
+				"labelCellText": "Share Savings",
+				"rowHeaderText": "Share Savings",
+				"columnHeaderText": "Balance",
+				"container": {
+					"element": "cell",
+					"index": 1,
+					"containerText": "Share Savings [REDACTED] [•••3450]"
+				},
+				"navigatesTo": null,
+				"visibleText": "[REDACTED]",
+				"framePath": ["content"],
+				"frameScope": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"verdict": "ok",
+			"index": 7
+		},
+		{
+			"digestAfter": "8bd0c8cb9d10e9e8c31989b5c68d61e8a46582d468e6fc660636c1ab08fe1fa0",
+			"diff": {
+				"loadedFrame": null,
+				"titleChanges": [],
+				"headingsAdded": [],
+				"elementsAdded": [],
+				"routeChanges": [],
+				"presentTexts": [
+					{
+						"frame": ["banner"],
+						"text": "CoreOne 7.4"
+					},
+					{
+						"frame": ["nav"],
+						"text": "Menu"
+					},
+					{
+						"frame": ["content"],
+						"text": "Member Inquiry"
+					}
+				],
+				"dialogOpened": false,
+				"dialogClosed": false
+			},
+			"actor": "agent",
+			"action": {
+				"kind": "extract",
+				"output": "memberName"
+			},
+			"reason": "Read the member name on Member Inquiry.",
+			"pageRoute": "/member/detail?txt1={{memberId}}&btnGo=Search",
+			"digestBefore": "8bd0c8cb9d10e9e8c31989b5c68d61e8a46582d468e6fc660636c1ab08fe1fa0",
+			"fingerprint": {
+				"role": "cell",
+				"name": "[REDACTED]",
+				"tag": "td",
+				"nameAttribute": null,
+				"inputType": null,
+				"labelCellText": "Member Name",
+				"rowHeaderText": "Member Name",
+				"columnHeaderText": "{{memberId}}",
+				"container": {
+					"element": "cell",
+					"index": 1,
+					"containerText": "Member Name [REDACTED]"
+				},
+				"navigatesTo": null,
+				"visibleText": "[REDACTED]",
+				"framePath": ["content"],
+				"frameScope": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"verdict": "ok",
+			"index": 8
+		}
+	],
+	"outputs": [
+		{
+			"name": "savingsBalance",
+			"description": "The member's Share Savings balance.",
+			"type": {
+				"kind": "decimal",
+				"scale": 2
+			},
+			"sensitive": true
+		},
+		{
+			"name": "memberName",
+			"description": "The member's name as shown on Member Inquiry.",
+			"type": {
+				"kind": "string"
+			},
+			"sensitive": true
+		}
+	],
+	"finish": {
+		"summary": "Signed on, found member {{memberId}} and read the Share Savings balance and member name.",
+		"finalCheckpoint": {
+			"kind": "text_present",
+			"text": "Member Inquiry",
+			"frame": [
+				{
+					"kind": "by_name",
+					"name": "content"
+				}
+			]
+		}
+	}
+}

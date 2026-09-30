@@ -106,6 +106,29 @@ const boundaries = listWorkspaces().map(({ name, dir }) => ({
 	rules: { 'no-restricted-imports': ['error', { patterns: boundaryPatterns(name) }] },
 }));
 
+// Invariant 1 (no LLM on the replay path): the CLI's replay and catalog code never reaches the agent. This object
+// matches files the cli boundary object also matches, so it repeats the cli patterns and adds the agent ban.
+const replayPathNoAgent = {
+	name: 'idp/cli-replay-path-no-agent',
+	files: [
+		'apps/cli/src/commands/replay.ts',
+		'apps/cli/src/commands/catalog.ts',
+		'apps/cli/src/replay/**/*.ts',
+		'apps/cli/src/catalog/**/*.ts',
+	],
+	rules: {
+		'no-restricted-imports': [
+			'error',
+			{
+				patterns: [
+					...boundaryPatterns('@idp/cli'),
+					forbid('@idp/agent', 'Invariant 1: the replay/catalog path never constructs or calls the agent (R3.1).'),
+				],
+			},
+		],
+	},
+};
+
 export default defineConfig(
 	{ ignores: ['**/dist/**', '**/.turbo/**', '**/coverage/**', '**/node_modules/**', 'evidence/**', '.claude/**'] },
 	js.configs.recommended,
@@ -123,5 +146,6 @@ export default defineConfig(
 	},
 	{ name: 'idp/cli-console', files: ['tools/repo-checks/src/cli.ts'], rules: { 'no-console': 'off' } },
 	boundaries,
+	replayPathNoAgent,
 	prettier,
 );

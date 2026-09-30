@@ -1,0 +1,48 @@
+{
+	"runId": "replay-20260930T034105-5c39",
+	"kind": "replay",
+	"startedAt": "2026-09-30T03:41:05.171Z",
+	"endedAt": "2026-09-30T03:41:21.648Z",
+	"artifact": {
+		"id": "open-sub-account",
+		"version": "1.0.1",
+		"contentHash": "sha256:88fcbc606d27b87b89a3f5fba6d680af22350bd1d863d67431d93bbd2b4e0c81"
+	},
+	"resultKind": "success",
+	"evidence": [
+		{
+			"id": "screenshot-0001",
+			"kind": "screenshot",
+			"path": "screenshots/0001-intervention.png",
+			"sha256": "2ff3d530fbd2144525731ebeec5bdddbd1d7699a1f168f45c29f5338ff2bb3c6",
+			"redacted": true,
+			"localOnly": false
+		},
+		{
+			"id": "a11y-snapshot-0001",
+			"kind": "a11y_snapshot",
+			"path": "snapshots/0001.json",
+			"sha256": "5b554105275724227112654b4a76a91877355d98095b4e85799894eaa9311f60",
+			"redacted": true,
+			"localOnly": false
+		},
+		{
+			"id": "json-0001",
+			"kind": "json",
+			"path": "interventions/ir-20260930T034107-6c3a.json",
+			"sha256": "a612b5e3d314d91297df1685ae76967b40124cb7eba2edde39ab5b58cd5cf07b",
+			"redacted": true,
+			"localOnly": false
+		},
+		{
+			"id": "json-0002",
+			"kind": "json",
+			"path": "interventions/ir-20260930T034107-6c3a-v2.json",
+			"sha256": "ec3df7352c0d663d33329eb72328bf159d137ec4cd4b708e7f1e612c2de83337",
+			"redacted": true,
+			"localOnly": false
+		}
+	],
+	"logPath": "run.jsonl",
+	"redactionRulesVersion": "1.1.0"
+}

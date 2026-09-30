@@ -1,0 +1,53 @@
+{
+	"id": "ir-20260930T034107-6c3a",
+	"runId": "replay-20260930T034105-5c39",
+	"runKind": "replay",
+	"kind": "approval",
+	"reason": {
+		"code": "approval_required",
+		"text": "Approval required: Confirm and open the sub-account. IRREVERSIBLE: policy requires approval before this click. The click raises a native confirm dialog (\"This action cannot be undone. Continue?\"); the replay engine accepts that dialog as part of the approved action, never on its own."
+	},
+	"subject": {
+		"kind": "capability",
+		"id": "open-sub-account",
+		"version": "1.0.1"
+	},
+	"currentStep": {
+		"index": 11,
+		"id": "s12-click-confirm",
+		"description": "Confirm and open the sub-account. IRREVERSIBLE: policy requires approval before this click. The click raises a native confirm dialog (\"This action cannot be undone. Continue?\"); the replay engine accepts that dialog as part of the approved action, never on its own.",
+		"risk": "irreversible"
+	},
+	"state": {
+		"url": "http://127.0.0.1:4211/",
+		"title": "CoreOne 7.4",
+		"screenshotRef": {
+			"id": "screenshot-0001",
+			"kind": "screenshot",
+			"path": "screenshots/0001-intervention.png",
+			"sha256": "2ff3d530fbd2144525731ebeec5bdddbd1d7699a1f168f45c29f5338ff2bb3c6",
+			"redacted": true,
+			"localOnly": false
+		},
+		"a11ySnapshotRef": {
+			"id": "a11y-snapshot-0001",
+			"kind": "a11y_snapshot",
+			"path": "snapshots/0001.json",
+			"sha256": "5b554105275724227112654b4a76a91877355d98095b4e85799894eaa9311f60",
+			"redacted": true,
+			"localOnly": false
+		}
+	},
+	"options": [
+		"approve",
+		"reject",
+		"aborted"
+	],
+	"status": "resolved",
+	"resolution": {
+		"decision": "approve",
+		"by": "operator:ops-1",
+		"at": "2026-09-30T03:41:21.362Z"
+	},
+	"createdAt": "2026-09-30T03:41:07.712Z"
+}

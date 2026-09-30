@@ -1,0 +1,56 @@
+{
+	"runId": "replay-20260930T034020-b613",
+	"kind": "replay",
+	"startedAt": "2026-09-30T03:40:20.954Z",
+	"endedAt": "2026-09-30T03:40:22.068Z",
+	"artifact": {
+		"id": "member-lookup",
+		"version": "1.0.0",
+		"contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+	},
+	"resultKind": "failure",
+	"evidence": [
+		{
+			"id": "screenshot-0001",
+			"kind": "screenshot",
+			"path": "screenshots/0001-intervention.png",
+			"sha256": "878d032bb4407d2ebd7fbe127045d252e517f7d4c743f9cd52cb42c580068b73",
+			"redacted": true,
+			"localOnly": false
+		},
+		{
+			"id": "a11y-snapshot-0001",
+			"kind": "a11y_snapshot",
+			"path": "snapshots/0001.json",
+			"sha256": "47ecbfb07234818abcb20b43b514c9dc87c7136ab77b5ae8d0f334d1ffdffcf6",
+			"redacted": true,
+			"localOnly": false
+		},
+		{
+			"id": "json-0001",
+			"kind": "json",
+			"path": "interventions/ir-20260930T034021-b633.json",
+			"sha256": "6860b36a098d69206325f24d450d676ba15561c6b79a96d0b2ad89107fa72e52",
+			"redacted": true,
+			"localOnly": false
+		},
+		{
+			"id": "screenshot-0002",
+			"kind": "screenshot",
+			"path": "screenshots/0002-failure-s04-click-sign-on.png",
+			"sha256": "878d032bb4407d2ebd7fbe127045d252e517f7d4c743f9cd52cb42c580068b73",
+			"redacted": true,
+			"localOnly": false
+		},
+		{
+			"id": "a11y-snapshot-0002",
+			"kind": "a11y_snapshot",
+			"path": "snapshots/0002.json",
+			"sha256": "47ecbfb07234818abcb20b43b514c9dc87c7136ab77b5ae8d0f334d1ffdffcf6",
+			"redacted": true,
+			"localOnly": false
+		}
+	],
+	"logPath": "run.jsonl",
+	"redactionRulesVersion": "1.1.0"
+}

@@ -9,6 +9,10 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
+		},
+		"./testing": {
+			"types": "./dist/testing/index.d.ts",
+			"import": "./dist/testing/index.js"
 		}
 	},
 	"files": [
@@ -18,13 +22,15 @@
 		"build": "tsc -b tsconfig.build.json",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
+		"test:functional": "vitest run --config vitest.functional.config.ts",
 		"test:watch": "vitest",
 		"clean": "rimraf dist"
 	},
 	"dependencies": {
 		"@idp/artifact-schema": "workspace:*",
 		"@idp/policy": "workspace:*",
-		"@idp/evidence": "workspace:*"
+		"@idp/evidence": "workspace:*",
+		"playwright": "catalog:"
 	},
 	"devDependencies": {
 		"@idp/typescript-config": "workspace:*",

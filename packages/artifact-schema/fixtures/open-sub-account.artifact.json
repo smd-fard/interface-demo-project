@@ -1,0 +1,767 @@
+{
+	"schemaVersion": "1.0.0",
+	"id": "open-sub-account",
+	"version": "1.0.1",
+	"title": "Open a sub-account for a member",
+	"summary": {
+		"does": "Signs on to CoreOne as the operator, finds the member by member number and opens a new sub-account (Holiday Club or Vacation Savings) with an initial deposit and a nickname. IRREVERSIBLE: the final Confirm commits the account and requires approval.",
+		"needs": "memberId (5-digit member number), product (Holiday Club | Vacation Savings), initialDeposit (decimal, 2 places) and nickname. The operator credential is resolved at run time (mockbank-operator).",
+		"returns": "On success: confirmationNumber (SA-nnnnnn). Business outcomes: member_not_found, validation_rejected, permission_denied."
+	},
+	"app": {
+		"vendorApp": "coreone",
+		"variant": "tenant-a",
+		"appVersion": "CoreOne 7.4"
+	},
+	"provenance": {
+		"discoveryRunId": null,
+		"compiledAt": "2026-09-29T00:00:00Z",
+		"compilerVersion": "0.0.0",
+		"model": null,
+		"humanStepIds": []
+	},
+	"credentialRef": "mockbank-operator",
+	"params": [
+		{
+			"name": "memberId",
+			"description": "The 5-digit member number to look up.",
+			"type": {
+				"kind": "string",
+				"pattern": "^\\d{5}$"
+			},
+			"required": true,
+			"sensitive": true
+		},
+		{
+			"name": "product",
+			"description": "The sub-account product to open.",
+			"type": {
+				"kind": "enum",
+				"values": ["Holiday Club", "Vacation Savings"]
+			},
+			"required": true,
+			"sensitive": false,
+			"example": "Holiday Club"
+		},
+		{
+			"name": "initialDeposit",
+			"description": "The opening deposit amount, as an exact decimal with up to 2 places.",
+			"type": {
+				"kind": "decimal",
+				"scale": 2
+			},
+			"required": true,
+			"sensitive": false,
+			"example": "250.00"
+		},
+		{
+			"name": "nickname",
+			"description": "A nickname for the new sub-account, shown to the member.",
+			"type": {
+				"kind": "string",
+				"minLength": 1,
+				"maxLength": 30
+			},
+			"required": true,
+			"sensitive": true
+		}
+	],
+	"outputs": [
+		{
+			"name": "confirmationNumber",
+			"description": "CoreOne's confirmation number for the opened sub-account.",
+			"type": {
+				"kind": "string",
+				"pattern": "^SA-\\d{6}$"
+			},
+			"sensitive": false
+		}
+	],
+	"steps": [
+		{
+			"id": "s01-open-app",
+			"kind": "navigate",
+			"description": "Open CoreOne; the frameset loads the Sign On page into the content frame.",
+			"phase": "login",
+			"risk": "read",
+			"route": "/",
+			"checkpoint": {
+				"kind": "text_present",
+				"text": "Sign On",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			}
+		},
+		{
+			"id": "s02-fill-user-id",
+			"kind": "fill",
+			"description": "Type the operator user id from the credential store into User ID.",
+			"phase": "login",
+			"risk": "reversible",
+			"target": {
+				"description": "User ID input on the Sign On page",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "form_row",
+							"labelText": "User ID",
+							"control": "input"
+						},
+						"rationale": "Primary rung: the label sits in the adjacent <td> (no <label for>, no id, no ARIA), so the input has no accessible name and role/label rungs cannot resolve it. The label text is stable; breaks if the row is relabelled.",
+						"surface": {
+							"web": {
+								"cssHint": "input[name=txtUser]"
+							}
+						}
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Sign On",
+							"element": "input",
+							"index": 0
+						},
+						"rationale": "Last resort: User ID is the first input of the Sign On form. Breaks if a field is added before it."
+					}
+				]
+			},
+			"value": {
+				"kind": "credential",
+				"ref": "mockbank-operator",
+				"field": "username"
+			},
+			"sensitive": true
+		},
+		{
+			"id": "s03-fill-password",
+			"kind": "fill",
+			"description": "Type the operator password from the credential store into Password. The secret is resolved at run time and never stored.",
+			"phase": "login",
+			"risk": "reversible",
+			"target": {
+				"description": "Password input on the Sign On page",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "form_row",
+							"labelText": "Password",
+							"control": "input"
+						},
+						"rationale": "Primary rung: the label sits in the adjacent <td>, so the password input has no accessible name. The label text is stable; breaks if the row is relabelled.",
+						"surface": {
+							"web": {
+								"cssHint": "input[name=txtPwd]"
+							}
+						}
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Sign On",
+							"element": "input",
+							"index": 1
+						},
+						"rationale": "Last resort: Password is the second input of the Sign On form. Breaks if a field is added before it."
+					}
+				]
+			},
+			"value": {
+				"kind": "credential",
+				"ref": "mockbank-operator",
+				"field": "password"
+			},
+			"sensitive": true
+		},
+		{
+			"id": "s04-click-sign-on",
+			"kind": "click",
+			"description": "Submit the Sign On form; the content frame shows Member Search.",
+			"phase": "login",
+			"risk": "read",
+			"target": {
+				"description": "Sign On button",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "role",
+						"role": "button",
+						"name": "Sign On",
+						"exact": true,
+						"rationale": "An <input type=submit> exposes role button with its value as the accessible name. Breaks only if the caption changes."
+					},
+					{
+						"kind": "text",
+						"text": "Sign On",
+						"match": "exact",
+						"rationale": "The submit input's value is its visible caption. Survives a lost accessibility role."
+					}
+				]
+			},
+			"checkpoint": {
+				"kind": "text_present",
+				"text": "Member Search",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			}
+		},
+		{
+			"id": "s05-fill-member-id",
+			"kind": "fill",
+			"description": "Type the requested member number into Member #.",
+			"phase": "main",
+			"risk": "reversible",
+			"target": {
+				"description": "Member # input on the Member Search page",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "form_row",
+							"labelText": "Member #",
+							"control": "input"
+						},
+						"rationale": "Primary rung: the label sits in the adjacent <td>, so the input (name txt1) has no accessible name. The label text is stable; breaks if the row is relabelled.",
+						"surface": {
+							"web": {
+								"cssHint": "input[name=txt1]"
+							}
+						}
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Member Search",
+							"element": "input",
+							"index": 0
+						},
+						"rationale": "Last resort: Member # is the first input of the search form. Breaks if a field is added before it."
+					}
+				]
+			},
+			"value": {
+				"kind": "param",
+				"name": "memberId"
+			},
+			"sensitive": true
+		},
+		{
+			"id": "s06-click-search",
+			"kind": "click",
+			"description": "Run the search; the content frame shows Member Inquiry for the member.",
+			"phase": "main",
+			"risk": "read",
+			"target": {
+				"description": "Search button on the Member Search page",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "role",
+						"role": "button",
+						"name": "Search",
+						"exact": true,
+						"rationale": "An <input type=submit value=Search> exposes role button named Search. Breaks only if the caption changes.",
+						"surface": {
+							"web": {
+								"cssHint": "input[name=btnGo]"
+							}
+						}
+					},
+					{
+						"kind": "text",
+						"text": "Search",
+						"match": "exact",
+						"rationale": "The submit input's value is its visible caption; exact match avoids the \"Member Search\" heading."
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Member Search",
+							"element": "button",
+							"index": 0
+						},
+						"rationale": "Last resort: Search is the only button of the Member Search form, so it resolves even when the caption is relabelled (tenant B reads \"Find\"). Breaks if a button is added before it."
+					}
+				]
+			},
+			"checkpoint": {
+				"kind": "text_present",
+				"text": "Member Inquiry",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			}
+		},
+		{
+			"id": "s07-click-open-sub-account",
+			"kind": "click",
+			"description": "Follow the Open Sub-Account link on Member Inquiry; the content frame shows the Open Sub-Account form.",
+			"phase": "main",
+			"risk": "read",
+			"target": {
+				"description": "Open Sub-Account link on the Member Inquiry page",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "role",
+						"role": "link",
+						"name": "Open Sub-Account",
+						"exact": true,
+						"rationale": "A plain <a> exposes role link with its text as the name. Breaks only if the link is relabelled."
+					},
+					{
+						"kind": "text",
+						"text": "Open Sub-Account",
+						"match": "exact",
+						"rationale": "The visible link text. Survives a lost accessibility role."
+					}
+				]
+			},
+			"checkpoint": {
+				"kind": "text_present",
+				"text": "Initial Deposit",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			}
+		},
+		{
+			"id": "s08-select-product",
+			"kind": "select",
+			"description": "Choose the requested sub-account product. The page does not change; the checkpoint confirms the form is still shown.",
+			"phase": "main",
+			"risk": "reversible",
+			"target": {
+				"description": "Product dropdown on the Open Sub-Account form",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "form_row",
+							"labelText": "Product",
+							"control": "select"
+						},
+						"rationale": "Primary rung: the label sits in the adjacent <td> (no <label for>, no id), so the select has no accessible name. The label text is stable; breaks if the row is relabelled.",
+						"surface": {
+							"web": {
+								"cssHint": "select[name=selProd]"
+							}
+						}
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Initial Deposit",
+							"element": "select",
+							"index": 0
+						},
+						"rationale": "Last resort: position 0 among the selects of the form. Breaks if a field is added before it."
+					}
+				]
+			},
+			"option": {
+				"kind": "param",
+				"name": "product"
+			},
+			"checkpoint": {
+				"kind": "text_present",
+				"text": "Initial Deposit",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			}
+		},
+		{
+			"id": "s09-fill-initial-deposit",
+			"kind": "fill",
+			"description": "Type the initial deposit amount.",
+			"phase": "main",
+			"risk": "reversible",
+			"target": {
+				"description": "Initial Deposit input on the Open Sub-Account form",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "form_row",
+							"labelText": "Initial Deposit",
+							"control": "input"
+						},
+						"rationale": "Primary rung: the label sits in the adjacent <td> (no <label for>, no id), so the input has no accessible name. The label text is stable; breaks if the row is relabelled.",
+						"surface": {
+							"web": {
+								"cssHint": "input[name=txtAmt]"
+							}
+						}
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Initial Deposit",
+							"element": "input",
+							"index": 0
+						},
+						"rationale": "Last resort: position 0 among the inputs of the form. Breaks if a field is added before it."
+					}
+				]
+			},
+			"value": {
+				"kind": "param",
+				"name": "initialDeposit"
+			},
+			"sensitive": false
+		},
+		{
+			"id": "s10-fill-nickname",
+			"kind": "fill",
+			"description": "Type the sub-account nickname.",
+			"phase": "main",
+			"risk": "reversible",
+			"target": {
+				"description": "Nickname input on the Open Sub-Account form",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "form_row",
+							"labelText": "Nickname",
+							"control": "input"
+						},
+						"rationale": "Primary rung: the label sits in the adjacent <td> (no <label for>, no id), so the input has no accessible name. The label text is stable; breaks if the row is relabelled.",
+						"surface": {
+							"web": {
+								"cssHint": "input[name=txtNick]"
+							}
+						}
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Initial Deposit",
+							"element": "input",
+							"index": 1
+						},
+						"rationale": "Last resort: position 1 among the inputs of the form. Breaks if a field is added before it."
+					}
+				]
+			},
+			"value": {
+				"kind": "param",
+				"name": "nickname"
+			},
+			"sensitive": true
+		},
+		{
+			"id": "s11-click-continue",
+			"kind": "click",
+			"description": "Continue to the review screen. Nothing is committed yet.",
+			"phase": "main",
+			"risk": "reversible",
+			"target": {
+				"description": "Continue button on the Open Sub-Account form",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "role",
+						"role": "button",
+						"name": "Continue",
+						"exact": true,
+						"rationale": "An <input type=submit value=Continue> exposes role button named Continue. Breaks only if the caption changes.",
+						"surface": {
+							"web": {
+								"cssHint": "input[type=submit][value=Continue]"
+							}
+						}
+					},
+					{
+						"kind": "text",
+						"text": "Continue",
+						"match": "exact",
+						"rationale": "The submit input's value is its visible caption. Survives a lost accessibility role."
+					}
+				]
+			},
+			"checkpoint": {
+				"kind": "text_present",
+				"text": "Review Sub-Account",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			}
+		},
+		{
+			"id": "s12-click-confirm",
+			"kind": "click",
+			"description": "Confirm and open the sub-account. IRREVERSIBLE: policy requires approval before this click. The click raises a native confirm dialog (\"This action cannot be undone. Continue?\"); the replay engine accepts that dialog as part of the approved action, never on its own.",
+			"phase": "main",
+			"risk": "irreversible",
+			"target": {
+				"description": "Confirm button on the Review Sub-Account page",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "role",
+						"role": "button",
+						"name": "Confirm",
+						"exact": true,
+						"rationale": "An <input type=submit value=Confirm> exposes role button named Confirm. Breaks only if the caption changes.",
+						"surface": {
+							"web": {
+								"cssHint": "input[type=submit][value=Confirm]"
+							}
+						}
+					},
+					{
+						"kind": "text",
+						"text": "Confirm",
+						"match": "exact",
+						"rationale": "The submit input's value is its visible caption. Survives a lost accessibility role."
+					}
+				]
+			},
+			"checkpoint": {
+				"kind": "text_present",
+				"text": "Sub-Account Opened",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			}
+		},
+		{
+			"id": "s13-extract-confirmation-number",
+			"kind": "extract",
+			"description": "Read the confirmation number of the new sub-account.",
+			"phase": "main",
+			"risk": "read",
+			"target": {
+				"description": "Confirmation # value cell",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "table_cell_relative",
+							"headerText": "Confirmation #",
+							"direction": "right",
+							"offset": 1
+						},
+						"rationale": "The number is the cell right of the Confirmation # row header; the header text is stable. Breaks if the table is pivoted."
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Confirmation #",
+							"element": "cell",
+							"index": 1
+						},
+						"rationale": "Last resort: the second cell of the row that holds Confirmation #. Breaks if a column is inserted."
+					}
+				]
+			},
+			"output": "confirmationNumber",
+			"parse": {
+				"kind": "text",
+				"pattern": "SA-\\d{6}"
+			}
+		}
+	],
+	"successCondition": {
+		"kind": "text_present",
+		"text": "Sub-Account Opened",
+		"frame": [
+			{
+				"kind": "by_name",
+				"name": "content"
+			}
+		]
+	},
+	"outcomeRules": [
+		{
+			"code": "member_not_found",
+			"class": "business_outcome",
+			"description": "No member has this member number.",
+			"signature": {
+				"kind": "text_present",
+				"text": "No records match your search criteria",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"scope": ["s06-click-search"]
+		},
+		{
+			"code": "validation_rejected",
+			"class": "business_outcome",
+			"description": "CoreOne rejected the member number as invalid.",
+			"signature": {
+				"kind": "text_present",
+				"text": "Invalid Member Number",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"scope": ["s06-click-search"]
+		},
+		{
+			"code": "permission_denied",
+			"class": "business_outcome",
+			"description": "The operator is not entitled to this function (SEC-403).",
+			"signature": {
+				"kind": "text_present",
+				"text": "SEC-403"
+			},
+			"scope": "any_step"
+		},
+		{
+			"code": "known_dialog",
+			"class": "recoverable",
+			"description": "The scheduled-maintenance notice alert raised when Member Inquiry loads; accepting it is harmless.",
+			"signature": {
+				"kind": "dialog_text",
+				"text": "Scheduled maintenance"
+			},
+			"scope": "any_step",
+			"recovery": {
+				"kind": "dismiss_dialog",
+				"action": "accept"
+			}
+		},
+		{
+			"code": "session_timeout",
+			"class": "recoverable",
+			"description": "The session expired and CoreOne returned to Sign On; sign on again once and resume.",
+			"signature": {
+				"kind": "text_present",
+				"text": "Your session has expired"
+			},
+			"scope": "any_step",
+			"recovery": {
+				"kind": "reauth"
+			}
+		},
+		{
+			"code": "app_error",
+			"class": "failure",
+			"description": "CoreOne showed its server error page.",
+			"signature": {
+				"kind": "any_of",
+				"signatures": [
+					{
+						"kind": "title_matches",
+						"title": "Server Error"
+					},
+					{
+						"kind": "text_present",
+						"text": "Runtime Error"
+					}
+				]
+			},
+			"scope": "any_step"
+		}
+	],
+	"contentHash": "sha256:88fcbc606d27b87b89a3f5fba6d680af22350bd1d863d67431d93bbd2b4e0c81"
+}

@@ -1,0 +1,143 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"runId": {
+			"type": "string",
+			"pattern": "^(?:discovery|replay)-\\d{8}T\\d{6}-[0-9a-f]{4}$",
+			"description": "Run id: \"<kind>-<yyyymmddThhmmss>-<4hex>\" with kind discovery|replay and a UTC timestamp, e.g. \"replay-20260929T101500-a1b2\". Names the run evidence directory."
+		},
+		"kind": {
+			"type": "string",
+			"enum": ["discovery", "replay"],
+			"description": "What produced a run: an LLM-driven discovery run or a deterministic replay run."
+		},
+		"startedAt": {
+			"type": "string",
+			"format": "date-time",
+			"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+			"description": "When the run started (ISO 8601, UTC)."
+		},
+		"endedAt": {
+			"anyOf": [
+				{
+					"type": "string",
+					"format": "date-time",
+					"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+				},
+				{ "type": "null" }
+			],
+			"description": "When the run ended; null while it is still running (or crashed)."
+		},
+		"artifact": {
+			"anyOf": [{ "$ref": "#/$defs/ArtifactRef" }, { "type": "null" }],
+			"description": "The artifact replayed, or compiled by a discovery run; null when there is none (yet) or it was invalid."
+		},
+		"resultKind": {
+			"anyOf": [
+				{
+					"type": "string",
+					"enum": ["success", "business_outcome", "failure"],
+					"description": "success: outputs returned. business_outcome: a valid business answer such as member_not_found (not a failure). failure: the run could not complete."
+				},
+				{ "type": "null" }
+			],
+			"description": "The kind of the result in result.json; null until the run ends."
+		},
+		"evidence": {
+			"maxItems": 10000,
+			"type": "array",
+			"items": { "$ref": "#/$defs/EvidenceRef" },
+			"description": "Every evidence file of the run; ids are unique."
+		},
+		"logPath": {
+			"type": "string",
+			"maxLength": 300,
+			"pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*(?:\\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$",
+			"description": "Path of the run log inside the run directory, normally \"run.jsonl\"."
+		},
+		"redactionRulesVersion": {
+			"type": "string",
+			"pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+			"description": "Version of the redaction rules applied to every sink of this run, so a reviewer knows what was masked."
+		}
+	},
+	"required": [
+		"runId",
+		"kind",
+		"startedAt",
+		"endedAt",
+		"artifact",
+		"resultKind",
+		"evidence",
+		"logPath",
+		"redactionRulesVersion"
+	],
+	"additionalProperties": false,
+	"description": "The index of one run directory (manifest.json): what ran, when, how it ended, and where its evidence is.",
+	"$defs": {
+		"ArtifactRef": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+					"description": "Capability id: a lowercase kebab-case slug, e.g. \"member-lookup\". Stable across artifact versions."
+				},
+				"version": {
+					"type": "string",
+					"pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+					"description": "Version of the capability that ran."
+				},
+				"contentHash": {
+					"type": "string",
+					"pattern": "^sha256:[0-9a-f]{64}$",
+					"description": "contentHash of the exact artifact document that ran."
+				}
+			},
+			"required": ["id", "version", "contentHash"],
+			"additionalProperties": false,
+			"description": "Identifies the exact capability artifact a run used, without embedding it."
+		},
+		"EvidenceRef": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z0-9][a-z0-9]*(?:-[a-z0-9]+)*$",
+					"description": "Evidence id: a lowercase kebab-case slug unique within the run, e.g. \"screenshot-0003\"."
+				},
+				"kind": {
+					"type": "string",
+					"enum": ["screenshot", "a11y_snapshot", "trace", "json", "log"],
+					"description": "What the evidence file holds: a masked screenshot, a redacted accessibility snapshot, a Playwright trace (local only), a redacted JSON document, or a redacted log."
+				},
+				"path": {
+					"type": "string",
+					"maxLength": 300,
+					"pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*(?:\\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$",
+					"description": "A POSIX path relative to the run directory, e.g. \"screenshots/0003-s06-click-search.png\". No leading \"/\", no \".\" or \"..\" segment, no backslash, no scheme: evidence can never point outside its run."
+				},
+				"sha256": {
+					"type": "string",
+					"pattern": "^[0-9a-f]{64}$",
+					"description": "SHA-256 of the stored file bytes, as 64 lowercase hex characters. Detects tampering."
+				},
+				"redacted": {
+					"type": "boolean",
+					"const": true,
+					"description": "Always true: the file passed the redaction layer (or screenshot masking) before it was stored. A literal, so an unredacted ref cannot be represented (invariant 3)."
+				},
+				"localOnly": {
+					"type": "boolean",
+					"description": "true for files that stay on the machine that produced them (e.g. traces, which cannot be fully masked); they are never copied into shared evidence."
+				}
+			},
+			"required": ["id", "kind", "path", "sha256", "redacted", "localOnly"],
+			"additionalProperties": false,
+			"description": "A pointer to one stored evidence file of a run. The contract carries refs, never the evidence content."
+		}
+	}
+}

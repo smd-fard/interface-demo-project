@@ -1,0 +1,87 @@
+{
+	"scriptVersion": 1,
+	"name": "open-sub-account",
+	"description": "Scripted discovery of open-sub-account on mock-bank: sign on, find {{memberId}}, open a {{product}} sub-account with {{initialDeposit}} and {{nickname}}, confirm (irreversible: needs human approval) and read the confirmation number.",
+	"steps": [
+		{ "tool": "navigate", "input": { "route": "/", "reason": "Open the application entry page." } },
+		{
+			"tool": "fill",
+			"target": { "role": "textbox", "label": "User ID", "frame": "content" },
+			"input": { "value": "{{credential.username}}", "reason": "Enter the operator user ID on the Sign On form." }
+		},
+		{
+			"tool": "fill",
+			"target": { "role": "textbox", "label": "Password", "frame": "content" },
+			"input": { "value": "{{credential.password}}", "reason": "Enter the operator password." }
+		},
+		{
+			"tool": "click",
+			"target": { "role": "button", "name": "Sign On", "frame": "content" },
+			"input": { "reason": "Submit the Sign On form." }
+		},
+		{
+			"tool": "fill",
+			"target": { "role": "textbox", "label": "Member #", "frame": "content" },
+			"input": { "value": "{{memberId}}", "reason": "Enter the member number on Member Search." }
+		},
+		{
+			"tool": "click",
+			"target": { "role": "button", "name": "Search", "frame": "content" },
+			"input": { "reason": "Search for the member." }
+		},
+		{
+			"tool": "click",
+			"target": { "role": "link", "name": "Open Sub-Account", "frame": "content" },
+			"input": { "reason": "Start opening a sub-account from Member Inquiry." }
+		},
+		{
+			"tool": "select",
+			"target": { "role": "combobox", "label": "Product", "frame": "content" },
+			"input": { "option": "{{product}}", "reason": "Choose the requested product." }
+		},
+		{
+			"tool": "fill",
+			"target": { "role": "textbox", "label": "Initial Deposit", "frame": "content" },
+			"input": { "value": "{{initialDeposit}}", "reason": "Enter the opening deposit." }
+		},
+		{
+			"tool": "fill",
+			"target": { "role": "textbox", "label": "Nickname", "frame": "content" },
+			"input": { "value": "{{nickname}}", "reason": "Enter the sub-account nickname." }
+		},
+		{
+			"tool": "click",
+			"target": { "role": "button", "name": "Continue", "frame": "content" },
+			"input": { "reason": "Submit the form to reach the review page." }
+		},
+		{
+			"tool": "click",
+			"target": { "role": "button", "name": "Confirm", "frame": "content" },
+			"input": { "reason": "Confirm the reviewed request; this commits the sub-account and needs approval." }
+		},
+		{
+			"tool": "declare_output",
+			"input": {
+				"name": "confirmationNumber",
+				"type": "string",
+				"description": "CoreOne's confirmation number for the opened sub-account.",
+				"sensitive": false,
+				"reason": "The goal asks for the confirmation number."
+			}
+		},
+		{
+			"tool": "extract",
+			"target": { "role": "cell", "label": "Confirmation #", "frame": "content" },
+			"input": { "output": "confirmationNumber", "reason": "Read the confirmation number on Sub-Account Opened." }
+		},
+		{
+			"tool": "finish",
+			"input": {
+				"summary": "Opened a {{product}} sub-account for member {{memberId}} and read the confirmation number.",
+				"finalCheckpoint": { "kind": "text", "text": "Sub-Account Opened", "frame": "content" },
+				"reason": "Sub-Account Opened is shown with the confirmation number."
+			}
+		}
+	],
+	"onExhausted": "error"
+}

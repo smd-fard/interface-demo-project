@@ -31,26 +31,27 @@ the pnpm `catalog:` in `pnpm-workspace.yaml`. There is no database: artifacts, p
 
 ## Workspace map
 
-Package scope is `@idp/*`. **Status: scaffolded, shells empty until their spec.** Every workspace below
-exists (created by `monorepo-foundation`) and builds, typechecks and tests, but apart from
-`typescript-config` and `tools/repo-checks` each is an empty shell. What a package "Owns" is its intended
-responsibility; it is real only once its spec in [`_design/roadmap.md`](_design/roadmap.md) ships
-(status in [`_design/index.md`](_design/index.md)).
+Package scope is `@idp/*`. **Status: implemented.** All workspaces below are real code with unit tests
+(and, where they touch a browser, the target app or a session, functional tests), built by
+`computer-use-automation-system` (status in [`_design/index.md`](_design/index.md)). Each package's `CLAUDE.md`
+holds its rules and its `README.md` its API. Outside the workspaces: `config/` (policy + app profiles, data
+only), `artifacts/` (the capability catalog), `evidence/` (curated redacted runs) and `.runs/` (raw run dirs,
+gitignored).
 
-| Path                          | Package                 | Owns                                                                                                                                                              |
-| ----------------------------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `packages/typescript-config`  | `@idp/typescript-config` | Shared `tsconfig` bases.                                                                                                                                          |
-| `packages/artifact-schema`    | `@idp/artifact-schema`  | **The contracts.** Zod schemas + types for the capability artifact, locators, steps, params/outputs, checkpoints, outcome rules, and the replay **result contract**. JSON Schema export. Runtime dep: `zod` only. |
-| `packages/policy`             | `@idp/policy`           | Allowlist (domains/routes/action types), action risk classes, redaction rules. Pure functions, no I/O.                                                           |
-| `packages/evidence`           | `@idp/evidence`         | Redacting structured run log, evidence store (screenshots, a11y snapshots, traces), run manifests.                                                               |
-| `packages/surface`            | `@idp/surface`          | The **`Surface` port** (`observe` / `act` / `resolve`) + the Playwright web adapter, the locator-ladder resolver, and the human-action recorder.                   |
-| `packages/session`            | `@idp/session`          | Live session controller: control lease (`AGENT` / `PAUSED` / `HUMAN` / `RESUMING`), intervention requests, pause/cede/resume.                                     |
-| `packages/replay-engine`      | `@idp/replay-engine`    | Deterministic executor: waits, checkpoints, runtime-condition detection, bounded recovery, result classification.                                                  |
-| `packages/agent`              | `@idp/agent`            | LLM discovery loop (tools ⇄ `Surface`) + the **artifact compiler** (successful run → capability artifact).                                                        |
-| `apps/cli`                    | `@idp/cli`              | `discover`, `replay`, `catalog`, `operator` commands — the demo path.                                                                                            |
-| `apps/operator`               | `@idp/operator`         | Minimal (deliberately mocked) operator console: list interventions, take control, resume.                                                                         |
-| `apps/mock-bank`              | `@idp/mock-bank`        | The **proxy target**: a hostile legacy core-banking web app (framesets, nested tables, no test IDs) with fault-injection switches and a tenant variant. Synthetic data only. |
-| `tools/repo-checks`           | `@idp/repo-checks`      | Tooling. Dependency-boundary checks (BND001–BND009) from `layers.json`; runs in `pnpm lint`. Not part of the dependency direction below. |
+| Path                         | Package                  | Owns                                                                                                                                                                                                |
+| ---------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `packages/typescript-config` | `@idp/typescript-config` | Shared `tsconfig` bases.                                                                                                                                                                            |
+| `packages/artifact-schema`   | `@idp/artifact-schema`   | **The contracts.** Zod schemas + types for the capability artifact, locators, steps, params/outputs, checkpoints, outcome rules, policy config, app profile, intervention request and the replay **result contract** (`RunResult`). JSON Schema export + fixtures. Runtime dep: `zod` only. |
+| `packages/policy`            | `@idp/policy`            | Action kinds, risk classification, allowlist evaluation (`evaluateAction` / `evaluateLanding`), redaction rules and masked screenshots. Pure functions, no I/O.                                    |
+| `packages/evidence`          | `@idp/evidence`          | Run directories, the redacting structured `RunLog`, evidence store (screenshots, snapshots) and run manifests.                                                                                      |
+| `packages/surface`           | `@idp/surface`           | The **`Surface` port** (`observe` / `act` / `resolve`) + the Playwright web adapter (`launchWebSurface`), the locator-ladder resolver, policy-guarded acts and the human-action recorder.           |
+| `packages/session`           | `@idp/session`           | Live session controller: control lease (`AGENT` / `PAUSED` / `HUMAN` / `RESUMING`), `LeasedSurface`, intervention requests, the localhost control API (`ControlServer` / `ControlClient`).         |
+| `packages/replay-engine`     | `@idp/replay-engine`     | Deterministic executor (`replay`): param binding, waits, checkpoints, runtime-condition detection and classification, bounded recovery, approvals/escalation, `RunResult`.                         |
+| `packages/agent`             | `@idp/agent`             | LLM discovery loop (tools ⇄ `Surface`, stop conditions, Anthropic + scripted model clients) + the **artifact compiler** (successful run → capability artifact).                                    |
+| `apps/cli`                   | `@idp/cli`               | `idp` commands `discover`, `replay`, `catalog`, `operator` — the demo path; loads `config/` and `.env`, redacts all output.                                                                                        |
+| `apps/operator`              | `@idp/operator`          | Minimal (deliberately mocked) server-rendered operator console: list interventions, take control, approve/reject, resume, abort — via the session control API.                                    |
+| `apps/mock-bank`             | `@idp/mock-bank`         | The **proxy target** "CoreOne": a hostile legacy core-banking web app on `node:http` (framesets, nested tables, no test IDs) with fault-injection switches (`MOCKBANK_FAULTS`, `/__admin/faults`) and a tenant-B variant. Synthetic data only. |
+| `tools/repo-checks`          | `@idp/repo-checks`       | Tooling. Dependency-boundary checks (BND001–BND009) from `layers.json`; runs in `pnpm lint`. Not part of the dependency direction below.                                                            |
 
 ### Dependency direction (enforced)
 
@@ -98,7 +99,7 @@ and `layers.json` must change together.
 - **Errors:** typed error classes with a stable `code`. Never throw strings. Never use `catch {}` to swallow.
 - **Files:** one exported concept per file, `PascalCase.ts` for classes, `camelCase.ts` for function
   modules, a barrel `src/index.ts` per package. Tests sit next to the source (`*.test.ts`). Functional
-  tests go in `<pkg>/test/functional/`.
+  tests go in `<pkg>/test/functional/` and run via `pnpm test:functional` (not `pnpm test`).
 - **Tests never call a real LLM.** Agent tests use a scripted fake model. The only real model calls happen
   in `/capture-evidence` discovery runs, and those need user confirmation because they cost money.
 - **Docs:** each package has a `CLAUDE.md` (its rules) and a `README.md` (its API). Decisions go in ADRs
@@ -138,15 +139,19 @@ pnpm install
 pnpm build          # turbo run build (tsc -b tsconfig.build.json per workspace)
 pnpm typecheck      # turbo run typecheck
 pnpm lint           # eslint . && pnpm boundaries
-pnpm test           # turbo run test — unit + functional, no real LLM, no browser, no network
+pnpm test           # turbo run test — unit only: no real LLM, no browser, no network
+pnpm test:functional  # turbo run test:functional — <pkg>/test/functional: real mock-bank process + Chromium
+pnpm setup:browsers # install Playwright Chromium (once, before test:functional or any replay/discover)
 pnpm format         # prettier --write .
 pnpm format:check   # prettier --check .
 pnpm boundaries     # @idp/repo-checks: dependency-boundary checks against layers.json
 pnpm clean          # turbo run clean + remove .turbo
+pnpm mock-bank      # start the proxy target (after pnpm build; MOCKBANK_PORT, default 4010)
+pnpm idp <discover|replay|catalog|operator> [flags]   # the CLI (after pnpm build); `--help` per command
+pnpm operator       # the operator console directly (needs IDP_CONTROL_URL/IDP_CONTROL_TOKEN; usually via `pnpm idp operator`)
 ```
 
-Added by their specs (not yet available): `pnpm mock-bank` (start the proxy target app) and
-`pnpm idp <command>` (the CLI: `discover | replay | catalog | operator`).
+The demo path, env keys and exit codes are in [`README.md`](README.md).
 
 Git: `origin` is the GitHub repo. Feature branches `feature/<slug>` branch from and merge back into `main`
 locally. Claude never pushes (`git push` is denied in `.claude/settings.json`); the user pushes.

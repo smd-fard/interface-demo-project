@@ -12,12 +12,14 @@
 		}
 	},
 	"files": [
-		"dist"
+		"dist",
+		"scripts"
 	],
 	"scripts": {
 		"build": "tsc -b tsconfig.build.json",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
+		"test:functional": "vitest run --config vitest.functional.config.ts",
 		"test:watch": "vitest",
 		"clean": "rimraf dist"
 	},
@@ -26,7 +28,9 @@
 		"@idp/policy": "workspace:*",
 		"@idp/evidence": "workspace:*",
 		"@idp/surface": "workspace:*",
-		"@idp/session": "workspace:*"
+		"@idp/session": "workspace:*",
+		"@anthropic-ai/sdk": "catalog:",
+		"zod": "catalog:"
 	},
 	"devDependencies": {
 		"@idp/typescript-config": "workspace:*",
