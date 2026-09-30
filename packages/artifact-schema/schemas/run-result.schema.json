@@ -1,0 +1,259 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"oneOf": [
+		{
+			"type": "object",
+			"properties": {
+				"kind": { "type": "string", "const": "success" },
+				"runId": {
+					"type": "string",
+					"pattern": "^(?:discovery|replay)-\\d{8}T\\d{6}-[0-9a-f]{4}$",
+					"description": "Run id: \"<kind>-<yyyymmddThhmmss>-<4hex>\" with kind discovery|replay and a UTC timestamp, e.g. \"replay-20260929T101500-a1b2\". Names the run evidence directory."
+				},
+				"artifact": { "$ref": "#/$defs/ArtifactRef" },
+				"outputs": {
+					"type": "object",
+					"propertyNames": {
+						"type": "string",
+						"maxLength": 64,
+						"pattern": "^[a-z][a-zA-Z0-9]*$",
+						"description": "Output name: a camelCase identifier, e.g. \"savingsBalance\". Keys the success result outputs record."
+					},
+					"additionalProperties": {
+						"anyOf": [{ "type": "string", "maxLength": 2000 }, { "type": "number" }, { "type": "boolean" }],
+						"description": "One output value, typed per its OutputSpec. Decimals are strings (e.g. \"1523.47\")."
+					},
+					"description": "Declared outputs by name, each validated against its OutputSpec. Sensitive outputs are masked in sinks."
+				},
+				"durationMs": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 9007199254740991,
+					"description": "Wall-clock duration of the run, in milliseconds."
+				},
+				"drift": {
+					"maxItems": 200,
+					"type": "array",
+					"items": {
+						"type": "object",
+						"properties": {
+							"stepId": {
+								"type": "string",
+								"maxLength": 64,
+								"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+								"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+							},
+							"rungIndex": {
+								"type": "integer",
+								"minimum": 1,
+								"maximum": 19,
+								"description": "0-based index of the rung that matched; always above 0 here (rung 0 matching is not drift)."
+							},
+							"rungKind": {
+								"type": "string",
+								"enum": ["role", "label", "text", "structural"],
+								"description": "The kind of a locator-ladder rung: role, label, text or structural."
+							}
+						},
+						"required": ["stepId", "rungIndex", "rungKind"],
+						"additionalProperties": false,
+						"description": "A step whose target resolved only on a fallback rung: a sign the primary locator is drifting (R3.4)."
+					},
+					"description": "Steps that resolved on a fallback rung; empty when none did."
+				},
+				"recoveries": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 9007199254740991,
+					"description": "How many bounded recoveries ran (e.g. a dismissed dialog, a re-auth). Each is in the run log."
+				}
+			},
+			"required": ["kind", "runId", "artifact", "outputs", "durationMs", "drift", "recoveries"],
+			"additionalProperties": false,
+			"description": "The capability completed, its success condition held and every output validated."
+		},
+		{
+			"type": "object",
+			"properties": {
+				"kind": { "type": "string", "const": "business_outcome" },
+				"runId": {
+					"type": "string",
+					"pattern": "^(?:discovery|replay)-\\d{8}T\\d{6}-[0-9a-f]{4}$",
+					"description": "Run id: \"<kind>-<yyyymmddThhmmss>-<4hex>\" with kind discovery|replay and a UTC timestamp, e.g. \"replay-20260929T101500-a1b2\". Names the run evidence directory."
+				},
+				"artifact": { "$ref": "#/$defs/ArtifactRef" },
+				"code": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+					"description": "Outcome/condition code: snake_case, e.g. \"member_not_found\". Stable; calling agents branch on it."
+				},
+				"message": {
+					"type": "string",
+					"maxLength": 2000,
+					"description": "What the app showed, e.g. \"No records match your search criteria\". Already redacted: sensitive values are masked before the result is built."
+				},
+				"stepId": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+					"description": "The step after which the outcome was detected."
+				}
+			},
+			"required": ["kind", "runId", "artifact", "code", "message", "stepId"],
+			"additionalProperties": false,
+			"description": "The app gave a valid business answer that is not the happy path, e.g. member_not_found. Not a failure."
+		},
+		{
+			"type": "object",
+			"properties": {
+				"kind": { "type": "string", "const": "failure" },
+				"runId": {
+					"type": "string",
+					"pattern": "^(?:discovery|replay)-\\d{8}T\\d{6}-[0-9a-f]{4}$",
+					"description": "Run id: \"<kind>-<yyyymmddThhmmss>-<4hex>\" with kind discovery|replay and a UTC timestamp, e.g. \"replay-20260929T101500-a1b2\". Names the run evidence directory."
+				},
+				"artifact": {
+					"anyOf": [{ "$ref": "#/$defs/ArtifactRef" }, { "type": "null" }],
+					"description": "The artifact that ran; null when the artifact itself was invalid."
+				},
+				"reason": {
+					"type": "string",
+					"enum": [
+						"invalid_params",
+						"artifact_invalid",
+						"policy_denied",
+						"approval_required",
+						"approval_rejected",
+						"target_unresolved",
+						"checkpoint_failed",
+						"unknown_dialog",
+						"app_error",
+						"recovery_exhausted",
+						"output_invalid",
+						"session_lost",
+						"human_aborted",
+						"timeout"
+					],
+					"description": "Stable failure code. invalid_params: params failed validation. artifact_invalid: the artifact failed schema/hash checks. policy_denied: the policy refused an action. approval_required: an irreversible step needed approval and none was available (unattended). approval_rejected: an operator rejected it. target_unresolved: no locator rung matched uniquely. checkpoint_failed: a checkpoint did not hold. unknown_dialog: an unrecognised dialog appeared. app_error: the app showed an error page. recovery_exhausted: a bounded recovery ran out. output_invalid: an extracted output failed its type. session_lost: the session could not be re-established. human_aborted: an operator aborted. timeout: the run exceeded its time budget."
+				},
+				"step": {
+					"anyOf": [
+						{
+							"type": "object",
+							"properties": {
+								"index": {
+									"type": "integer",
+									"minimum": 0,
+									"maximum": 9007199254740991,
+									"description": "0-based position of the step in the artifact."
+								},
+								"id": {
+									"type": "string",
+									"maxLength": 64,
+									"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+									"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+								}
+							},
+							"required": ["index", "id"],
+							"additionalProperties": false,
+							"description": "The step that failed."
+						},
+						{ "type": "null" }
+					],
+					"description": "The failing step; null when the run failed before or outside a step."
+				},
+				"expected": {
+					"type": "string",
+					"maxLength": 2000,
+					"description": "What the step or check expected to see. Already redacted: sensitive values are masked before the result is built."
+				},
+				"observed": {
+					"type": "string",
+					"maxLength": 2000,
+					"description": "What was actually observed. Already redacted: sensitive values are masked before the result is built."
+				},
+				"evidence": {
+					"maxItems": 100,
+					"type": "array",
+					"items": { "$ref": "#/$defs/EvidenceRef" },
+					"description": "Evidence captured at the failure (screenshot, snapshot)."
+				},
+				"interventionRequestId": {
+					"description": "The intervention request raised for this failure, if a human was asked to help.",
+					"type": "string",
+					"pattern": "^ir-\\d{8}T\\d{6}-[0-9a-f]{4}$"
+				}
+			},
+			"required": ["kind", "runId", "artifact", "reason", "step", "expected", "observed", "evidence"],
+			"additionalProperties": false,
+			"description": "The run could not complete. Says where, what was expected, what was observed, and where the evidence is."
+		}
+	],
+	"description": "The result of a run: success | business_outcome | failure. Recoverable conditions are handled inside the run and logged; they are never a result (invariant 4).",
+	"$defs": {
+		"ArtifactRef": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+					"description": "Capability id: a lowercase kebab-case slug, e.g. \"member-lookup\". Stable across artifact versions."
+				},
+				"version": {
+					"type": "string",
+					"pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+					"description": "Version of the capability that ran."
+				},
+				"contentHash": {
+					"type": "string",
+					"pattern": "^sha256:[0-9a-f]{64}$",
+					"description": "contentHash of the exact artifact document that ran."
+				}
+			},
+			"required": ["id", "version", "contentHash"],
+			"additionalProperties": false,
+			"description": "Identifies the exact capability artifact a run used, without embedding it."
+		},
+		"EvidenceRef": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z0-9][a-z0-9]*(?:-[a-z0-9]+)*$",
+					"description": "Evidence id: a lowercase kebab-case slug unique within the run, e.g. \"screenshot-0003\"."
+				},
+				"kind": {
+					"type": "string",
+					"enum": ["screenshot", "a11y_snapshot", "trace", "json", "log"],
+					"description": "What the evidence file holds: a masked screenshot, a redacted accessibility snapshot, a Playwright trace (local only), a redacted JSON document, or a redacted log."
+				},
+				"path": {
+					"type": "string",
+					"maxLength": 300,
+					"pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*(?:\\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$",
+					"description": "A POSIX path relative to the run directory, e.g. \"screenshots/0003-s06-click-search.png\". No leading \"/\", no \".\" or \"..\" segment, no backslash, no scheme: evidence can never point outside its run."
+				},
+				"sha256": {
+					"type": "string",
+					"pattern": "^[0-9a-f]{64}$",
+					"description": "SHA-256 of the stored file bytes, as 64 lowercase hex characters. Detects tampering."
+				},
+				"redacted": {
+					"type": "boolean",
+					"const": true,
+					"description": "Always true: the file passed the redaction layer (or screenshot masking) before it was stored. A literal, so an unredacted ref cannot be represented (invariant 3)."
+				},
+				"localOnly": {
+					"type": "boolean",
+					"description": "true for files that stay on the machine that produced them (e.g. traces, which cannot be fully masked); they are never copied into shared evidence."
+				}
+			},
+			"required": ["id", "kind", "path", "sha256", "redacted", "localOnly"],
+			"additionalProperties": false,
+			"description": "A pointer to one stored evidence file of a run. The contract carries refs, never the evidence content."
+		}
+	}
+}

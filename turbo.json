@@ -21,6 +21,10 @@
 		},
 		"clean": {
 			"cache": false
+		},
+		"test:functional": {
+			"dependsOn": ["^build", "build", "@idp/mock-bank#build"],
+			"cache": false
 		}
 	}
 }

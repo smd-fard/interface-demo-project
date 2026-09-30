@@ -1,0 +1,242 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"id": {
+			"type": "string",
+			"pattern": "^ir-\\d{8}T\\d{6}-[0-9a-f]{4}$",
+			"description": "Intervention-request id: \"ir-<yyyymmddThhmmss>-<4hex>\" (UTC timestamp + 4 lowercase hex), e.g. \"ir-20260929T101500-beef\"."
+		},
+		"runId": {
+			"type": "string",
+			"pattern": "^(?:discovery|replay)-\\d{8}T\\d{6}-[0-9a-f]{4}$",
+			"description": "Run id: \"<kind>-<yyyymmddThhmmss>-<4hex>\" with kind discovery|replay and a UTC timestamp, e.g. \"replay-20260929T101500-a1b2\". Names the run evidence directory."
+		},
+		"runKind": {
+			"type": "string",
+			"enum": ["discovery", "replay"],
+			"description": "What produced a run: an LLM-driven discovery run or a deterministic replay run."
+		},
+		"kind": {
+			"type": "string",
+			"enum": ["approval", "takeover"],
+			"description": "approval: an irreversible action awaits an operator decision. takeover: the run is stuck and asks an operator to drive the same live session."
+		},
+		"reason": {
+			"type": "object",
+			"properties": {
+				"code": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+					"description": "Stable snake_case reason, e.g. \"approval_required\", \"target_unresolved\"."
+				},
+				"text": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 1000,
+					"description": "Human-readable explanation. Redacted before the request is built."
+				}
+			},
+			"required": ["code", "text"],
+			"additionalProperties": false,
+			"description": "Why the run paused."
+		},
+		"subject": {
+			"oneOf": [
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "capability" },
+						"id": {
+							"type": "string",
+							"maxLength": 64,
+							"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+							"description": "Capability id: a lowercase kebab-case slug, e.g. \"member-lookup\". Stable across artifact versions."
+						},
+						"version": {
+							"type": "string",
+							"pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+							"description": "Version of the capability being replayed."
+						}
+					},
+					"required": ["kind", "id", "version"],
+					"additionalProperties": false,
+					"description": "A replay run: the capability being executed."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "goal" },
+						"goal": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 2000,
+							"description": "The natural-language discovery goal, with sensitive values as {{param}} placeholders. Redacted before the request is built."
+						}
+					},
+					"required": ["kind", "goal"],
+					"additionalProperties": false,
+					"description": "A discovery run: the goal the agent is pursuing."
+				}
+			],
+			"description": "What the run is doing: a capability (replay) or a goal (discovery)."
+		},
+		"currentStep": {
+			"type": "object",
+			"properties": {
+				"index": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 9007199254740991,
+					"description": "0-based step index (replay) or action count so far (discovery)."
+				},
+				"id": {
+					"description": "The artifact step id; absent in discovery, which has no steps yet.",
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$"
+				},
+				"description": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 500,
+					"description": "What the paused step does, e.g. \"Click Confirm\". Redacted before the request is built."
+				},
+				"risk": {
+					"type": "string",
+					"enum": ["read", "reversible", "irreversible"],
+					"description": "Risk class of an action: read (observes only), reversible (changes state that can be undone, e.g. typing into a field), irreversible (commits a business change, e.g. Confirm). Policy gates on it; replay recomputes it and never lowers it."
+				}
+			},
+			"required": ["index", "description", "risk"],
+			"additionalProperties": false,
+			"description": "The step or action the run paused before."
+		},
+		"state": {
+			"type": "object",
+			"properties": {
+				"url": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 2000,
+					"description": "The current page URL. Redacted before the request is built."
+				},
+				"title": { "type": "string", "maxLength": 500, "description": "The current page title. Redacted." },
+				"screenshotRef": {
+					"anyOf": [{ "$ref": "#/$defs/EvidenceRef" }, { "type": "null" }],
+					"description": "Masked screenshot at pause time; null if capture failed."
+				},
+				"a11ySnapshotRef": {
+					"anyOf": [{ "$ref": "#/$defs/EvidenceRef" }, { "type": "null" }],
+					"description": "Redacted accessibility snapshot at pause time; null if capture failed."
+				}
+			},
+			"required": ["url", "title", "screenshotRef", "a11ySnapshotRef"],
+			"additionalProperties": false,
+			"description": "What the screen looked like when the run paused."
+		},
+		"options": {
+			"minItems": 1,
+			"maxItems": 4,
+			"type": "array",
+			"items": {
+				"type": "string",
+				"enum": ["approve", "reject", "resumed", "aborted"],
+				"description": "How a request was resolved. approve/reject: an approval request was answered. resumed: the operator took control and handed it back. aborted: the operator ended the run."
+			},
+			"description": "The decisions the operator may take, without duplicates."
+		},
+		"status": {
+			"type": "string",
+			"enum": ["open", "claimed", "resolved"],
+			"description": "open: waiting. claimed: an operator took it (and may hold control). resolved: decided."
+		},
+		"resolution": {
+			"description": "The decision; present exactly when status is resolved.",
+			"type": "object",
+			"properties": {
+				"decision": {
+					"type": "string",
+					"enum": ["approve", "reject", "resumed", "aborted"],
+					"description": "How a request was resolved. approve/reject: an approval request was answered. resumed: the operator took control and handed it back. aborted: the operator ended the run."
+				},
+				"by": {
+					"type": "string",
+					"pattern": "^operator:[a-z0-9][a-z0-9._-]{0,63}$",
+					"description": "The operator who resolved it."
+				},
+				"at": {
+					"type": "string",
+					"format": "date-time",
+					"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+					"description": "When it was resolved (ISO 8601, UTC)."
+				}
+			},
+			"required": ["decision", "by", "at"],
+			"additionalProperties": false
+		},
+		"createdAt": {
+			"type": "string",
+			"format": "date-time",
+			"pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+			"description": "When the request was raised (ISO 8601, UTC)."
+		}
+	},
+	"required": [
+		"id",
+		"runId",
+		"runKind",
+		"kind",
+		"reason",
+		"subject",
+		"currentStep",
+		"state",
+		"options",
+		"status",
+		"createdAt"
+	],
+	"additionalProperties": false,
+	"description": "A request for a human: approve an irreversible action or take over the same live session. Built from redacted data only; screenshots are masked (invariant 3).",
+	"$defs": {
+		"EvidenceRef": {
+			"type": "object",
+			"properties": {
+				"id": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z0-9][a-z0-9]*(?:-[a-z0-9]+)*$",
+					"description": "Evidence id: a lowercase kebab-case slug unique within the run, e.g. \"screenshot-0003\"."
+				},
+				"kind": {
+					"type": "string",
+					"enum": ["screenshot", "a11y_snapshot", "trace", "json", "log"],
+					"description": "What the evidence file holds: a masked screenshot, a redacted accessibility snapshot, a Playwright trace (local only), a redacted JSON document, or a redacted log."
+				},
+				"path": {
+					"type": "string",
+					"maxLength": 300,
+					"pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*(?:\\/[A-Za-z0-9_][A-Za-z0-9._-]*)*$",
+					"description": "A POSIX path relative to the run directory, e.g. \"screenshots/0003-s06-click-search.png\". No leading \"/\", no \".\" or \"..\" segment, no backslash, no scheme: evidence can never point outside its run."
+				},
+				"sha256": {
+					"type": "string",
+					"pattern": "^[0-9a-f]{64}$",
+					"description": "SHA-256 of the stored file bytes, as 64 lowercase hex characters. Detects tampering."
+				},
+				"redacted": {
+					"type": "boolean",
+					"const": true,
+					"description": "Always true: the file passed the redaction layer (or screenshot masking) before it was stored. A literal, so an unredacted ref cannot be represented (invariant 3)."
+				},
+				"localOnly": {
+					"type": "boolean",
+					"description": "true for files that stay on the machine that produced them (e.g. traces, which cannot be fully masked); they are never copied into shared evidence."
+				}
+			},
+			"required": ["id", "kind", "path", "sha256", "redacted", "localOnly"],
+			"additionalProperties": false,
+			"description": "A pointer to one stored evidence file of a run. The contract carries refs, never the evidence content."
+		}
+	}
+}

@@ -1,0 +1,12 @@
+{
+	"kind": "business_outcome",
+	"runId": "replay-20260930T033949-ac36",
+	"artifact": {
+		"id": "member-lookup",
+		"version": "1.0.0",
+		"contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+	},
+	"code": "member_not_found",
+	"message": "No records match your search criteria",
+	"stepId": "s06-click-search"
+}

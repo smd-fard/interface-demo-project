@@ -1,0 +1,15 @@
+{
+	"kind": "success",
+	"runId": "discovery-20260930T033842-7774",
+	"artifact": {
+		"id": "member-lookup",
+		"version": "1.0.0",
+		"contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+	},
+	"outputs": {
+		"savingsBalance": "[REDACTED]"
+	},
+	"durationMs": 16383,
+	"drift": [],
+	"recoveries": 0
+}

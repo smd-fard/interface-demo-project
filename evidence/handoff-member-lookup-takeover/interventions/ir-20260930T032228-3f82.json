@@ -1,0 +1,47 @@
+{
+	"id": "ir-20260930T032228-3f82",
+	"runId": "replay-20260930T032226-293a",
+	"runKind": "replay",
+	"kind": "takeover",
+	"reason": {
+		"code": "app_error",
+		"text": "Expected s06-click-search to complete without a app_error condition; observed app_error (artifact): matched \"Server Error\""
+	},
+	"subject": {
+		"kind": "capability",
+		"id": "member-lookup",
+		"version": "1.0.1"
+	},
+	"currentStep": {
+		"index": 5,
+		"id": "s06-click-search",
+		"description": "Run the search; the content frame shows Member Inquiry for the member.",
+		"risk": "read"
+	},
+	"state": {
+		"url": "http://127.0.0.1:4611/",
+		"title": "CoreOne 7.4",
+		"screenshotRef": {
+			"id": "screenshot-0001",
+			"kind": "screenshot",
+			"path": "screenshots/0001-intervention.png",
+			"sha256": "76045a2ecb0c09e87a8f7e09f65cd1ea4dc39612029a87bb23b0cc07940f205a",
+			"redacted": true,
+			"localOnly": false
+		},
+		"a11ySnapshotRef": {
+			"id": "a11y-snapshot-0001",
+			"kind": "a11y_snapshot",
+			"path": "snapshots/0001.json",
+			"sha256": "4bd4f1a3450b5d5da3c34522c604596bea30bfb2f6aac9bd865c6f4620fb8362",
+			"redacted": true,
+			"localOnly": false
+		}
+	},
+	"options": [
+		"resumed",
+		"aborted"
+	],
+	"status": "open",
+	"createdAt": "2026-09-30T03:22:28.274Z"
+}

@@ -1,0 +1,741 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"type": "object",
+	"properties": {
+		"app": {
+			"type": "object",
+			"properties": {
+				"vendorApp": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+					"description": "Vendor application id: a lowercase kebab-case slug naming the legacy product, e.g. \"coreone\". Independent of the tenant."
+				},
+				"appVersion": {
+					"description": "The version string the app reports, e.g. \"CoreOne 7.4\".",
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 100
+				}
+			},
+			"required": ["vendorApp"],
+			"additionalProperties": false,
+			"description": "Which vendor application this profile describes."
+		},
+		"variant": {
+			"type": "string",
+			"maxLength": 64,
+			"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+			"description": "Tenant/variant id: a lowercase kebab-case slug naming one institution's deployment of a vendor app, e.g. \"tenant-a\". Tenants of the same app can differ in labels and layout (R7.2)."
+		},
+		"origin": {
+			"type": "string",
+			"maxLength": 300,
+			"description": "Where the app is served: a URL origin such as \"http://127.0.0.1:4010\", or an environment token such as \"${MOCKBANK_ORIGIN}\" expanded by the loader. Artifact routes are resolved against it."
+		},
+		"loginRoute": {
+			"type": "string",
+			"maxLength": 2000,
+			"allOf": [{ "pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$" }, { "pattern": "^\\/(?!\\/)" }],
+			"description": "Route that shows the sign-on screen, e.g. \"/\"."
+		},
+		"credentialRef": {
+			"type": "string",
+			"maxLength": 64,
+			"pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+			"description": "Name of a credential held outside the artifact (resolved at run time from the environment/secret store), e.g. \"mockbank-operator\". It is a reference, never the secret itself."
+		},
+		"conditions": {
+			"maxItems": 100,
+			"type": "array",
+			"items": { "$ref": "#/$defs/OutcomeRule" },
+			"description": "Default outcome rules for every capability of this app. An artifact rule with the same code overrides the default. Scope must be \"any_step\": a profile has no steps."
+		},
+		"knownDialogs": {
+			"maxItems": 50,
+			"type": "array",
+			"items": {
+				"type": "object",
+				"properties": {
+					"code": {
+						"type": "string",
+						"maxLength": 64,
+						"pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+						"description": "Condition code logged when the dialog is handled, e.g. \"known_dialog\"."
+					},
+					"description": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 500,
+						"description": "What the dialog is and why it is safe to handle it this way."
+					},
+					"text": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 500,
+						"description": "Text the native dialog message contains (normalized substring), e.g. \"Scheduled maintenance\"."
+					},
+					"action": {
+						"type": "string",
+						"enum": ["accept", "dismiss"],
+						"description": "accept: OK. dismiss: Cancel/close."
+					}
+				},
+				"required": ["code", "description", "text", "action"],
+				"additionalProperties": false,
+				"description": "A native dialog the app is known to raise at unpredictable points. Replay handles it as a recoverable condition (a dialog_text signature with a dismiss_dialog recovery); any other dialog is a failure."
+			},
+			"description": "Native dialogs this app is known to raise that replay may handle."
+		}
+	},
+	"required": ["app", "variant", "origin", "loginRoute", "credentialRef", "conditions", "knownDialogs"],
+	"additionalProperties": false,
+	"description": "Per-app, per-tenant configuration read by the compiler and replay: where the app lives, how to sign on, and how its runtime conditions look. Holds a credential reference, never a secret.",
+	"$defs": {
+		"OutcomeRule": {
+			"type": "object",
+			"properties": {
+				"code": {
+					"type": "string",
+					"maxLength": 64,
+					"pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+					"description": "Outcome/condition code: snake_case, e.g. \"member_not_found\". Stable; calling agents branch on it."
+				},
+				"class": {
+					"type": "string",
+					"enum": ["business_outcome", "recoverable", "failure"],
+					"description": "How a recognised condition is handled. business_outcome: a valid answer returned to the caller (e.g. member_not_found), never a failure. recoverable: handled inside the run by a bounded recovery and logged, never returned. failure: the run stops with evidence (or escalates to a human)."
+				},
+				"description": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 500,
+					"description": "What the condition means for the caller and the reviewer (R2.7)."
+				},
+				"signature": {
+					"oneOf": [
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "text_present" },
+								"text": {
+									"type": "string",
+									"minLength": 1,
+									"maxLength": 500,
+									"description": "Text that appears on the screen when the condition holds, e.g. \"No records match your search criteria\"."
+								},
+								"frame": { "description": "Frame to look in; omitted = any frame.", "$ref": "#/$defs/FrameScope" }
+							},
+							"required": ["kind", "text"],
+							"additionalProperties": false,
+							"description": "The condition shows a fixed message somewhere on the screen."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "title_matches" },
+								"title": {
+									"type": "string",
+									"minLength": 1,
+									"maxLength": 500,
+									"description": "Text the document/window title contains, e.g. \"Server Error\"."
+								},
+								"frame": {
+									"description": "Frame whose document title is checked; omitted = the top document or any frame document.",
+									"$ref": "#/$defs/FrameScope"
+								}
+							},
+							"required": ["kind", "title"],
+							"additionalProperties": false,
+							"description": "The condition replaces the page, recognisable by its title."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "route_matches" },
+								"route": {
+									"type": "string",
+									"minLength": 1,
+									"maxLength": 500,
+									"description": "Glob over the route relative to the app origin, e.g. \"**/login*\". On a desktop surface: the screen id."
+								}
+							},
+							"required": ["kind", "route"],
+							"additionalProperties": false,
+							"description": "The app has moved to a known route (e.g. back to the sign-on page)."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "dialog_text" },
+								"text": {
+									"type": "string",
+									"minLength": 1,
+									"maxLength": 500,
+									"description": "Text the native dialog (alert/confirm/prompt) message contains, e.g. \"Scheduled maintenance\"."
+								}
+							},
+							"required": ["kind", "text"],
+							"additionalProperties": false,
+							"description": "A native dialog with a known message is open."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "http_status" },
+								"min": {
+									"type": "integer",
+									"minimum": 100,
+									"maximum": 599,
+									"description": "Lowest matching status, inclusive."
+								},
+								"max": {
+									"type": "integer",
+									"minimum": 100,
+									"maximum": 599,
+									"description": "Highest matching status, inclusive."
+								}
+							},
+							"required": ["kind", "min", "max"],
+							"additionalProperties": false,
+							"description": "The last document load (top document or frame) returned a status in the range, e.g. 500–599 for a failed load. Surfaces without HTTP report the equivalent load failure."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "any_of" },
+								"signatures": {
+									"minItems": 1,
+									"maxItems": 10,
+									"type": "array",
+									"items": {
+										"oneOf": [
+											{
+												"type": "object",
+												"properties": {
+													"kind": { "type": "string", "const": "text_present" },
+													"text": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 500,
+														"description": "Text that appears on the screen when the condition holds, e.g. \"No records match your search criteria\"."
+													},
+													"frame": {
+														"description": "Frame to look in; omitted = any frame.",
+														"$ref": "#/$defs/FrameScope"
+													}
+												},
+												"required": ["kind", "text"],
+												"additionalProperties": false,
+												"description": "The condition shows a fixed message somewhere on the screen."
+											},
+											{
+												"type": "object",
+												"properties": {
+													"kind": { "type": "string", "const": "title_matches" },
+													"title": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 500,
+														"description": "Text the document/window title contains, e.g. \"Server Error\"."
+													},
+													"frame": {
+														"description": "Frame whose document title is checked; omitted = the top document or any frame document.",
+														"$ref": "#/$defs/FrameScope"
+													}
+												},
+												"required": ["kind", "title"],
+												"additionalProperties": false,
+												"description": "The condition replaces the page, recognisable by its title."
+											},
+											{
+												"type": "object",
+												"properties": {
+													"kind": { "type": "string", "const": "route_matches" },
+													"route": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 500,
+														"description": "Glob over the route relative to the app origin, e.g. \"**/login*\". On a desktop surface: the screen id."
+													}
+												},
+												"required": ["kind", "route"],
+												"additionalProperties": false,
+												"description": "The app has moved to a known route (e.g. back to the sign-on page)."
+											},
+											{
+												"type": "object",
+												"properties": {
+													"kind": { "type": "string", "const": "dialog_text" },
+													"text": {
+														"type": "string",
+														"minLength": 1,
+														"maxLength": 500,
+														"description": "Text the native dialog (alert/confirm/prompt) message contains, e.g. \"Scheduled maintenance\"."
+													}
+												},
+												"required": ["kind", "text"],
+												"additionalProperties": false,
+												"description": "A native dialog with a known message is open."
+											},
+											{
+												"type": "object",
+												"properties": {
+													"kind": { "type": "string", "const": "http_status" },
+													"min": {
+														"type": "integer",
+														"minimum": 100,
+														"maximum": 599,
+														"description": "Lowest matching status, inclusive."
+													},
+													"max": {
+														"type": "integer",
+														"minimum": 100,
+														"maximum": 599,
+														"description": "Highest matching status, inclusive."
+													}
+												},
+												"required": ["kind", "min", "max"],
+												"additionalProperties": false,
+												"description": "The last document load (top document or frame) returned a status in the range, e.g. 500–599 for a failed load. Surfaces without HTTP report the equivalent load failure."
+											}
+										]
+									},
+									"description": "Leaf signatures; the condition holds when at least one matches. any_of cannot be nested."
+								}
+							},
+							"required": ["kind", "signatures"],
+							"additionalProperties": false,
+							"description": "Any of several signals identifies the condition (e.g. a title OR a body text)."
+						}
+					],
+					"description": "How a runtime condition is recognised from an observation, discriminated on `kind`. Evaluated deterministically by replay; no model is involved."
+				},
+				"scope": {
+					"anyOf": [
+						{
+							"type": "string",
+							"const": "any_step",
+							"description": "The rule is checked before and after every step."
+						},
+						{
+							"minItems": 1,
+							"maxItems": 100,
+							"type": "array",
+							"items": {
+								"type": "string",
+								"maxLength": 64,
+								"pattern": "^s\\d{2,3}-[a-z0-9]+(?:-[a-z0-9]+)*$",
+								"description": "Step id: \"s<NN>-<slug>\", e.g. \"s03-click-search\". Assigned once by the compiler and kept stable when steps are edited or inserted, so evidence, drift reports and outcome-rule scopes keep pointing at the same step."
+							},
+							"description": "The rule is checked only around these steps (e.g. not-found only after the Search click)."
+						}
+					],
+					"description": "Where the rule applies."
+				},
+				"message": {
+					"description": "Element whose text becomes the result message. The text passes the redaction layer before it reaches any sink; omitted = the description is used.",
+					"$ref": "#/$defs/TargetRef"
+				},
+				"recovery": {
+					"description": "Required when class is recoverable; forbidden otherwise.",
+					"oneOf": [
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "dismiss_dialog" },
+								"action": {
+									"type": "string",
+									"enum": ["accept", "dismiss"],
+									"description": "accept: OK. dismiss: Cancel/close."
+								}
+							},
+							"required": ["kind", "action"],
+							"additionalProperties": false,
+							"description": "Close the recognised native dialog, then continue the current step."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "click_through" },
+								"target": {
+									"description": "The control that closes the interstitial, e.g. a \"Continue\" link.",
+									"$ref": "#/$defs/TargetRef"
+								}
+							},
+							"required": ["kind", "target"],
+							"additionalProperties": false,
+							"description": "Click past an HTML interstitial (notice page, banner), then re-verify the current step."
+						},
+						{
+							"type": "object",
+							"properties": {
+								"kind": { "type": "string", "const": "retry" },
+								"max": {
+									"type": "integer",
+									"minimum": 1,
+									"maximum": 5,
+									"description": "Maximum number of retries of the current step. Always bounded."
+								},
+								"backoffMs": {
+									"type": "integer",
+									"minimum": 0,
+									"maximum": 60000,
+									"description": "Delay before each retry, in milliseconds."
+								}
+							},
+							"required": ["kind", "max", "backoffMs"],
+							"additionalProperties": false,
+							"description": "Re-run the current step (e.g. after a failed load). Never used for an irreversible step."
+						},
+						{
+							"type": "object",
+							"properties": { "kind": { "type": "string", "const": "reauth" } },
+							"required": ["kind"],
+							"additionalProperties": false,
+							"description": "Sign on again: re-run the login-phase steps once, then the main steps up to the current one. Refused (session_lost) if an irreversible step already ran."
+						}
+					]
+				}
+			},
+			"required": ["code", "class", "description", "signature", "scope"],
+			"additionalProperties": false,
+			"description": "Recognises one runtime condition and says how it is classified and handled. Resolution order at replay: artifact rule, then app profile default, then engine catalog default."
+		},
+		"FrameScope": {
+			"maxItems": 8,
+			"type": "array",
+			"items": {
+				"oneOf": [
+					{
+						"type": "object",
+						"properties": {
+							"kind": { "type": "string", "const": "by_name" },
+							"name": {
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 200,
+								"description": "The frame/iframe `name` attribute, e.g. \"content\"."
+							}
+						},
+						"required": ["kind", "name"],
+						"additionalProperties": false,
+						"description": "Preferred hop. Legacy framesets address frames by name (target=\"content\"), so the name is part of the app wiring and survives layout and URL changes."
+					},
+					{
+						"type": "object",
+						"properties": {
+							"kind": { "type": "string", "const": "by_url_path" },
+							"glob": {
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 500,
+								"description": "Glob over the frame document URL path, e.g. \"**/member/*.jsp\"."
+							}
+						},
+						"required": ["kind", "glob"],
+						"additionalProperties": false,
+						"description": "Fallback hop for unnamed frames: matches the frame by the path of the document it shows."
+					},
+					{
+						"type": "object",
+						"properties": {
+							"kind": { "type": "string", "const": "by_title" },
+							"title": {
+								"type": "string",
+								"minLength": 1,
+								"maxLength": 200,
+								"description": "The frame `title` attribute or its document title."
+							}
+						},
+						"required": ["kind", "title"],
+						"additionalProperties": false,
+						"description": "Fallback hop when neither name nor URL is stable."
+					}
+				],
+				"description": "One step down the frame tree."
+			},
+			"description": "Ordered frame path from the top document to the document that holds the target; [] means the top document. On a non-web surface this names the window/pane path instead."
+		},
+		"TargetRef": {
+			"type": "object",
+			"properties": {
+				"description": {
+					"type": "string",
+					"minLength": 1,
+					"maxLength": 300,
+					"description": "Human-readable name of the target, e.g. \"Search button in the member search form\". Shown to operators and in failure reports."
+				},
+				"frame": { "$ref": "#/$defs/FrameScope" },
+				"ladder": {
+					"minItems": 1,
+					"maxItems": 5,
+					"type": "array",
+					"items": { "$ref": "#/$defs/LocatorRung" },
+					"description": "Locator rungs in stability order (most stable first). The resolver tries each in turn inside `frame`; resolving on a later rung succeeds but is reported as drift."
+				}
+			},
+			"required": ["description", "frame", "ladder"],
+			"additionalProperties": false,
+			"description": "A UI element the artifact acts on or checks, independent of any one selector technology."
+		},
+		"LocatorRung": {
+			"oneOf": [
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "role" },
+						"role": {
+							"type": "string",
+							"pattern": "^[a-z]+$",
+							"description": "Accessibility role, e.g. \"button\", \"link\", \"textbox\", \"heading\"."
+						},
+						"name": {
+							"description": "Accessible name; may contain {{param}} placeholders.",
+							"type": "string",
+							"maxLength": 2000,
+							"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$"
+						},
+						"exact": {
+							"description": "true: the name must match exactly. Omitted/false: case-insensitive substring.",
+							"type": "boolean"
+						},
+						"rationale": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000,
+							"pattern": "\\S",
+							"description": "Why this rung identifies the target robustly (R2.3): which stable property it relies on and what change would break it."
+						},
+						"surface": {
+							"description": "Surface-tagged extras. Informational: the resolver never uses them as a primary rung, so the core rung stays expressible on a desktop surface (R7.1).",
+							"type": "object",
+							"properties": {
+								"web": {
+									"description": "Web-surface details.",
+									"type": "object",
+									"properties": {
+										"cssHint": {
+											"description": "A CSS selector recorded for diagnostics and drift reports only.",
+											"type": "string",
+											"minLength": 1,
+											"maxLength": 500
+										}
+									},
+									"additionalProperties": false
+								}
+							},
+							"additionalProperties": false
+						}
+					},
+					"required": ["kind", "role", "rationale"],
+					"additionalProperties": false,
+					"description": "Most stable rung: role + accessible name from the accessibility tree, which desktop UI automation trees also expose."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "label" },
+						"text": {
+							"type": "string",
+							"maxLength": 2000,
+							"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+							"description": "The label text associated with a form control."
+						},
+						"rationale": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000,
+							"pattern": "\\S",
+							"description": "Why this rung identifies the target robustly (R2.3): which stable property it relies on and what change would break it."
+						},
+						"surface": {
+							"description": "Surface-tagged extras. Informational: the resolver never uses them as a primary rung, so the core rung stays expressible on a desktop surface (R7.1).",
+							"type": "object",
+							"properties": {
+								"web": {
+									"description": "Web-surface details.",
+									"type": "object",
+									"properties": {
+										"cssHint": {
+											"description": "A CSS selector recorded for diagnostics and drift reports only.",
+											"type": "string",
+											"minLength": 1,
+											"maxLength": 500
+										}
+									},
+									"additionalProperties": false
+								}
+							},
+							"additionalProperties": false
+						}
+					},
+					"required": ["kind", "text", "rationale"],
+					"additionalProperties": false,
+					"description": "A form control found by its associated label."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "text" },
+						"text": {
+							"type": "string",
+							"maxLength": 2000,
+							"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+							"description": "The visible text of the element."
+						},
+						"match": {
+							"type": "string",
+							"enum": ["exact", "contains"],
+							"description": "exact: whole normalized text; contains: substring."
+						},
+						"rationale": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000,
+							"pattern": "\\S",
+							"description": "Why this rung identifies the target robustly (R2.3): which stable property it relies on and what change would break it."
+						},
+						"surface": {
+							"description": "Surface-tagged extras. Informational: the resolver never uses them as a primary rung, so the core rung stays expressible on a desktop surface (R7.1).",
+							"type": "object",
+							"properties": {
+								"web": {
+									"description": "Web-surface details.",
+									"type": "object",
+									"properties": {
+										"cssHint": {
+											"description": "A CSS selector recorded for diagnostics and drift reports only.",
+											"type": "string",
+											"minLength": 1,
+											"maxLength": 500
+										}
+									},
+									"additionalProperties": false
+								}
+							},
+							"additionalProperties": false
+						}
+					},
+					"required": ["kind", "text", "match", "rationale"],
+					"additionalProperties": false,
+					"description": "An element found by its visible text."
+				},
+				{
+					"type": "object",
+					"properties": {
+						"kind": { "type": "string", "const": "structural" },
+						"anchor": {
+							"oneOf": [
+								{
+									"type": "object",
+									"properties": {
+										"kind": { "type": "string", "const": "table_cell_relative" },
+										"headerText": {
+											"type": "string",
+											"maxLength": 2000,
+											"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+											"description": "Text of the header/label cell used as the anchor."
+										},
+										"direction": {
+											"type": "string",
+											"enum": ["right", "below"],
+											"description": "Where the target cell sits relative to the anchor cell."
+										},
+										"offset": {
+											"type": "integer",
+											"minimum": 1,
+											"maximum": 20,
+											"description": "How many cells away from the anchor (1 = adjacent)."
+										}
+									},
+									"required": ["kind", "headerText", "direction", "offset"],
+									"additionalProperties": false,
+									"description": "The cell beside or below a labelled cell. Robust for nested layout tables where values have no ids or labels."
+								},
+								{
+									"type": "object",
+									"properties": {
+										"kind": { "type": "string", "const": "form_row" },
+										"labelText": {
+											"type": "string",
+											"maxLength": 2000,
+											"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$",
+											"description": "Text in the row that labels the control."
+										},
+										"control": {
+											"type": "string",
+											"enum": ["input", "select", "button"],
+											"description": "The kind of control in that row."
+										}
+									},
+									"required": ["kind", "labelText", "control"],
+									"additionalProperties": false,
+									"description": "The control in the table/form row whose label cell has the given text (unlabelled legacy forms)."
+								},
+								{
+									"type": "object",
+									"properties": {
+										"kind": { "type": "string", "const": "nth_in_container" },
+										"containerText": {
+											"description": "Text inside the nearest container (form/table) to scope to; omitted = the whole frame document.",
+											"type": "string",
+											"maxLength": 2000,
+											"pattern": "^(?:[^{}]|\\{\\{[a-z][a-zA-Z0-9]*\\}\\})+$"
+										},
+										"element": {
+											"type": "string",
+											"enum": ["input", "select", "button", "link", "cell", "row"],
+											"description": "Kind of element to count."
+										},
+										"index": {
+											"type": "integer",
+											"minimum": 0,
+											"maximum": 500,
+											"description": "0-based position among matching elements in the container."
+										}
+									},
+									"required": ["kind", "element", "index"],
+									"additionalProperties": false,
+									"description": "LAST RESORT and BRITTLE: breaks whenever an element is added or reordered. Use only when no semantic rung exists; replay reports drift when it is the rung that resolved."
+								}
+							],
+							"description": "How the target is found relative to page structure."
+						},
+						"rationale": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000,
+							"pattern": "\\S",
+							"description": "Why this rung identifies the target robustly (R2.3): which stable property it relies on and what change would break it."
+						},
+						"surface": {
+							"description": "Surface-tagged extras. Informational: the resolver never uses them as a primary rung, so the core rung stays expressible on a desktop surface (R7.1).",
+							"type": "object",
+							"properties": {
+								"web": {
+									"description": "Web-surface details.",
+									"type": "object",
+									"properties": {
+										"cssHint": {
+											"description": "A CSS selector recorded for diagnostics and drift reports only.",
+											"type": "string",
+											"minLength": 1,
+											"maxLength": 500
+										}
+									},
+									"additionalProperties": false
+								}
+							},
+							"additionalProperties": false
+						}
+					},
+					"required": ["kind", "anchor", "rationale"],
+					"additionalProperties": false,
+					"description": "An element found by its position relative to stable text in the page structure."
+				}
+			],
+			"description": "One rung of the locator ladder. Rungs are tried in order and the first unique match wins. A visual-anchor rung (image/OCR match) is a design-only extension for non-DOM surfaces and is not part of v1."
+		}
+	}
+}

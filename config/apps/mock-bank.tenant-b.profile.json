@@ -1,0 +1,124 @@
+{
+	"app": {
+		"vendorApp": "coreone",
+		"appVersion": "CoreOne 7.2"
+	},
+	"variant": "tenant-b",
+	"origin": "${MOCKBANK_ORIGIN}",
+	"loginRoute": "/",
+	"credentialRef": "mockbank-operator",
+	"conditions": [
+		{
+			"code": "member_not_found",
+			"class": "business_outcome",
+			"description": "No member has this member number.",
+			"signature": {
+				"kind": "text_present",
+				"text": "No records match your search criteria",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"scope": "any_step"
+		},
+		{
+			"code": "validation_rejected",
+			"class": "business_outcome",
+			"description": "CoreOne rejected the account holder ID value as invalid.",
+			"signature": {
+				"kind": "text_present",
+				"text": "Invalid Member Number",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"scope": "any_step"
+		},
+		{
+			"code": "permission_denied",
+			"class": "business_outcome",
+			"description": "The operator is not entitled to this function (SEC-403).",
+			"signature": {
+				"kind": "text_present",
+				"text": "SEC-403"
+			},
+			"scope": "any_step"
+		},
+		{
+			"code": "known_dialog",
+			"class": "recoverable",
+			"description": "The scheduled-maintenance notice alert raised when Member Inquiry loads; accepting it is harmless.",
+			"signature": {
+				"kind": "dialog_text",
+				"text": "Scheduled maintenance"
+			},
+			"scope": "any_step",
+			"recovery": {
+				"kind": "dismiss_dialog",
+				"action": "accept"
+			}
+		},
+		{
+			"code": "session_timeout",
+			"class": "recoverable",
+			"description": "The session expired and CoreOne returned to Sign On; sign on again once and resume.",
+			"signature": {
+				"kind": "text_present",
+				"text": "Your session has expired"
+			},
+			"scope": "any_step",
+			"recovery": {
+				"kind": "reauth"
+			}
+		},
+		{
+			"code": "app_error",
+			"class": "failure",
+			"description": "CoreOne showed its server error page.",
+			"signature": {
+				"kind": "any_of",
+				"signatures": [
+					{
+						"kind": "title_matches",
+						"title": "Server Error"
+					},
+					{
+						"kind": "text_present",
+						"text": "Runtime Error"
+					}
+				]
+			},
+			"scope": "any_step"
+		},
+		{
+			"code": "failed_load",
+			"class": "recoverable",
+			"description": "The page failed to load (HTTP 5xx without the app error page); retry the step within budget.",
+			"signature": {
+				"kind": "http_status",
+				"min": 500,
+				"max": 599
+			},
+			"scope": "any_step",
+			"recovery": {
+				"kind": "retry",
+				"max": 2,
+				"backoffMs": 500
+			}
+		}
+	],
+	"knownDialogs": [
+		{
+			"code": "known_dialog",
+			"description": "Scheduled-maintenance notice on Member Inquiry; informational only.",
+			"text": "Scheduled maintenance",
+			"action": "accept"
+		}
+	]
+}

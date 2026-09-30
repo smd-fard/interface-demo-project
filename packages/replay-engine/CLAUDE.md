@@ -8,7 +8,9 @@ The deterministic executor for capability artifacts (R3, R3.1; invariants 1, 4, 
 artifact's steps through the `Surface` port with **no LLM in the decision loop**: it waits, verifies a
 checkpoint after every screen-changing step, detects runtime conditions, applies bounded recovery, and
 classifies the run as `success | business_outcome | failure`. When it is stuck it escalates through
-`@idp/session` rather than guessing. Shell — empty until its spec lands.
+`@idp/session` rather than guessing. Plan steps 32–44 are in place: the engine, the step handlers, the approval
+gate and attended escalation (34), and the full condition catalog — business outcomes (35–37), bounded
+recoveries (38–41) and hard failures (42–44).
 
 ## Owns
 
@@ -50,12 +52,58 @@ Codes most relevant here:
 
 ```
 src/
-  index.ts           barrel — currently `export {};`
-  index.test.ts      placeholder test (keeps the test gate green until real tests land)
-tsconfig.json        noEmit; typecheck + editor, includes src, test/ and vitest.config.ts
-tsconfig.build.json  emits src → dist (excludes *.test.ts)
-vitest.config.ts     src/**/*.test.ts + test/**/*.test.ts, node env, no file parallelism
+  index.ts                 barrel
+  ReplayEngine.ts          replay(): artifact + hash check → params (before any surface call) → steps →
+                           success condition → outputs → result.json + manifest
+  ReplayOptions.ts         defaults and bounds (timeouts, retry, dialog/re-auth budgets)
+  ReplaySession.ts         the narrow view of LiveSession replay needs (fakeable in unit tests)
+  params/                  CredentialProvider port, InMemoryCredentialProvider, bindValues (seeds the redactor)
+  checkpoints/             CheckpointVerifier (bounded check raced against a ConditionDetector), describeCheckpoint
+  outputs/                 extractOutputs / parseExtracted (text | decimal | integer, then outputsSchemaFor)
+  result/                  ResultBuilder (masked evidence on failure), redactResultForSink (free text only)
+  steps/                   StepRunner (per-step conditions, approval, escalation), performAction, verifyCheckpoint,
+                           handlers/<kind>.ts
+  conditions/              CONDITION_CATALOG (every taxonomy code: class, detector, response, budget), resolveRules
+                           (artifact rule → profile → catalog), knownDialogRules, detectConditions (pure signature
+                           matcher), ConditionWatch (per-step detector; unknown_dialog), classifyCondition,
+                           respondToCondition (outcome | recovery plan | thrown failure), failureReasonFor
+  recovery/                StepRecovery (per-step budgets), dismissKnownDialog, waitForSlowLoad, performRecoveryAction,
+                           recoveryFailure, logRecovery
+  escalation/              handleApproval (approval gate), handleHardFailure (takeover, re-verify, reacquire)
+  errors/                  ReplayError (code = FailureReason), toReplayError (surface/session errors → reason)
+test/functional/           real mock-bank + openLiveSession (`pnpm --filter @idp/replay-engine test:functional`)
 ```
+
+## Extension points
+
+- **Runtime conditions (`define-runtime-condition`, touch points 2–3):** register the code in `CONDITION_CODES` /
+  `CONDITION_CATALOG` (`src/conditions/ConditionCatalog.ts`: default class, detector, response, budget). A
+  signature detector is data (an `OutcomeRule` signature in the artifact or `config/apps/*.profile.json`, matched by
+  `detectConditions`). An engine detector goes in `ConditionWatch` / `StepRunner.settle`. Class resolution is always
+  artifact rule → profile → catalog; an unknown code fails loudly. Map a new failure code in `failureReasonFor`.
+  Add the injected-fault test in `test/functional/conditions/<code>.test.ts`.
+- **Step handlers (`define-action`, touch point 4):** `src/steps/handlers/<kind>.ts`, dispatched by `dispatch` in
+  `src/steps/StepRunner.ts` (the switch is exhaustive over the Step union). Always `performAction(actionBase(...))`
+  then `verifyCheckpoint`.
+
+The full taxonomy table (class / response / budget per code), the escalation rules and the result redaction are in
+[README.md](README.md). Budgets come from `ReplayOptions`, and every attempt is logged as `recovery`.
+
+## Exemplars (copy these)
+
+- A handler: `src/steps/handlers/click.ts`. A bounded recovery: `src/recovery/waitForSlowLoad.ts`.
+- An escalation: `src/escalation/handleHardFailure.ts` (+ `.test.ts` with a fake `EscalationSession`).
+- An injected-fault functional test: `test/functional/conditions/failedLoad.test.ts` (with `replayHarness.ts`).
+
+## Known limits
+
+- `unknown_dialog`: Chromium cannot screenshot behind a native dialog, so the failure carries only the redacted
+  blocked-page a11y snapshot (`ResultBuilder`). A screenshot ref is never faked.
+- `slow_load` is a heuristic: it applies only to a navigate/click/press that used its whole bound and whose
+  checkpoint does not hold yet.
+- In-place recoveries (dismiss, wait) are not nested inside a retry or re-auth re-run (→ `recovery_exhausted`).
+- Escalation: `requestApproval` reacquires the lease itself. After `escalate` resumes, the engine re-verifies the
+  checkpoint and then calls `lease.reacquire()`. Unattended runs fail with the persisted `interventionRequestId`.
 
 ## Commands
 
@@ -63,6 +111,7 @@ vitest.config.ts     src/**/*.test.ts + test/**/*.test.ts, node env, no file par
 pnpm --filter @idp/replay-engine build
 pnpm --filter @idp/replay-engine typecheck
 pnpm --filter @idp/replay-engine test
+pnpm --filter @idp/replay-engine test:functional   # needs apps/mock-bank/dist
 ```
 
 Lint and format are root-only (`pnpm lint`, `pnpm format:check`); there is no per-package lint script.

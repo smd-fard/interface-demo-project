@@ -1,0 +1,28 @@
+{
+  "kind": "success",
+  "runId": "replay-20260930T034049-9593",
+  "artifact": {
+    "id": "member-lookup",
+    "version": "1.0.0",
+    "contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+  },
+  "outputs": {
+    "savingsBalance": "[REDACTED]"
+  },
+  "durationMs": 1407,
+  "drift": [
+    {
+      "stepId": "s05-fill-member",
+      "rungIndex": 1,
+      "rungKind": "structural"
+    },
+    {
+      "stepId": "s06-click-search",
+      "rungIndex": 2,
+      "rungKind": "structural"
+    }
+  ],
+  "recoveries": 0
+}
+success: member-lookup@1.0.0 in 1.4 s, 0 recoveries, 2 drifted locator(s); outputs: savingsBalance=[REDACTED]
+run dir: /private/tmp/claude-501/-Users-mos-Workspaces-interface-demo-project/c1f8d9fb-1c07-4cc6-8b66-fc0647e23a3d/scratchpad/replays2/tenantb/replay-20260930T034049-9593

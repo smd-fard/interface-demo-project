@@ -10,7 +10,8 @@ fault-injection switches (not found, validation error, dialogs, timeouts, slow l
 tenant variant so determinism, error handling and multi-tenant drift can be demonstrated
 (R1.3, R3.2, R7.2, D3). The system treats it as a black box, reachable only over HTTP through a
 `Surface`; tests start it as a separate process. Synthetic data only.
-Status: Shell — empty until its spec lands.
+Status: Implemented (plan steps 18–22 of `computer-use-automation-system`). Screens, faults and tenants are
+documented in [README.md](README.md).
 
 ## Owns
 
@@ -46,12 +47,39 @@ Codes most relevant here:
 
 ```
 src/
-  index.ts           barrel / app entry — currently `export {};`
-  index.test.ts      placeholder test (keeps the test gate green until real tests land)
-tsconfig.json        noEmit; typecheck + editor, includes src, test/ and vitest.config.ts
-tsconfig.build.json  emits src → dist (excludes *.test.ts)
-vitest.config.ts     src/**/*.test.ts + test/**/*.test.ts, node env, no file parallelism
+  main.ts              process entry: env → server, prints `listening <url>`, SIGTERM/SIGINT
+  server.ts            createMockBankServer(config): node:http, session check, request-level faults
+  router.ts            the route table (method + exact path) and findRoute
+  AppContext.ts        config, tenant and in-memory state (sessions, faults, ledger) + reset
+  config.ts            loadConfig(env) and defaults
+  routes/              route modules (health, admin, frames, signOn, member, subAccount) + Route types
+  screens/             pure HTML renderers, one per screen (+ messages, errors, shell)
+  html/legacy.ts       hostile-markup helpers (nested layout tables, adjacent-cell labels, no ids/ARIA)
+  http/                request.ts (body, form, JSON and cookie readers) + respond.ts (html/text/json/redirect)
+  session/             SessionStore (cookie session, idle timeout, injectable clock)
+  faults/              fault codes + default routes, spec parsing, FaultSwitch, route matching
+  tenants/tenants.ts   per-tenant config (tenant B = relabelled, reordered, other version)
+  data/                synthetic members, users, SubAccountLedger (SA-nnnnnn sequence)
+  errors/              typed errors with stable codes
+test/functional/       spawn dist/main.js on port 0 and assert over HTTP (harness/ has the helpers)
+vitest.config.ts             unit tests: src/**/*.test.ts (no processes, no network)
+vitest.functional.config.ts  functional tests: test/functional/**/*.test.ts (needs `build` first)
 ```
+
+## Exemplars
+
+- A screen: `src/screens/memberSearch.ts` (pure renderer over `html/legacy.ts`, tenant-driven labels).
+- A route module: `src/routes/member.ts` (content routes, screen-level faults via `app.faults.take`).
+- A fault: its entry in `src/faults/faultCodes.ts` + the case in `test/functional/faults.test.ts`.
+
+## Rules for changes
+
+- Visible texts, titles, control names, frame names and routes are a public contract with the fixtures in
+  `packages/artifact-schema/fixtures/` (see `fixtures/README.md` "Mock-bank screen contract"). Change them only
+  together.
+- Faults are never random. A new fault gets a code in `faults/faultCodes.ts` with a documented default
+  route, a functional test in `faults.test.ts` and a row in the README fault table.
+- Tenant differences live only in `tenants/tenants.ts`; screens read the tenant, they are never copied.
 
 ## Commands
 
@@ -59,8 +87,9 @@ vitest.config.ts     src/**/*.test.ts + test/**/*.test.ts, node env, no file par
 pnpm --filter @idp/mock-bank build
 pnpm --filter @idp/mock-bank typecheck
 pnpm --filter @idp/mock-bank test
-pnpm --filter @idp/mock-bank start    # node dist/index.js (after build)
-pnpm --filter @idp/mock-bank dev      # tsx watch src/index.ts
+pnpm --filter @idp/mock-bank test:functional   # after build
+pnpm --filter @idp/mock-bank start    # node dist/main.js (after build)
+pnpm --filter @idp/mock-bank dev      # tsx watch src/main.ts
 ```
 
 Lint and format are root-only (`pnpm lint`, `pnpm format:check`); there is no per-package lint script.

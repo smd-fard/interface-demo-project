@@ -1,0 +1,73 @@
+{
+	"scriptVersion": 1,
+	"name": "member-lookup",
+	"description": "Scripted discovery of member-lookup on mock-bank: sign on, search {{memberId}}, read the Share Savings balance and the member name. Placeholders only; the agent substitutes the example inputs and credentials.",
+	"steps": [
+		{ "tool": "navigate", "input": { "route": "/", "reason": "Open the application entry page." } },
+		{
+			"tool": "fill",
+			"target": { "role": "textbox", "label": "User ID", "frame": "content" },
+			"input": { "value": "{{credential.username}}", "reason": "Enter the operator user ID on the Sign On form." }
+		},
+		{
+			"tool": "fill",
+			"target": { "role": "textbox", "label": "Password", "frame": "content" },
+			"input": { "value": "{{credential.password}}", "reason": "Enter the operator password." }
+		},
+		{
+			"tool": "click",
+			"target": { "role": "button", "name": "Sign On", "frame": "content" },
+			"input": { "reason": "Submit the Sign On form." }
+		},
+		{
+			"tool": "fill",
+			"target": { "role": "textbox", "label": "Member #", "frame": "content" },
+			"input": { "value": "{{memberId}}", "reason": "Enter the member number on Member Search." }
+		},
+		{
+			"tool": "click",
+			"target": { "role": "button", "name": "Search", "frame": "content" },
+			"input": { "reason": "Search for the member." }
+		},
+		{
+			"tool": "declare_output",
+			"input": {
+				"name": "savingsBalance",
+				"type": "decimal",
+				"scale": 2,
+				"description": "The member's Share Savings balance.",
+				"sensitive": true,
+				"reason": "The goal asks for the Share Savings balance."
+			}
+		},
+		{
+			"tool": "extract",
+			"target": { "role": "cell", "label": "Share Savings", "frame": "content" },
+			"input": { "output": "savingsBalance", "reason": "Read the balance next to Share Savings on Member Inquiry." }
+		},
+		{
+			"tool": "declare_output",
+			"input": {
+				"name": "memberName",
+				"type": "string",
+				"description": "The member's name as shown on Member Inquiry.",
+				"sensitive": true,
+				"reason": "Return the member name to confirm the right record."
+			}
+		},
+		{
+			"tool": "extract",
+			"target": { "role": "cell", "label": "Member Name", "frame": "content" },
+			"input": { "output": "memberName", "reason": "Read the member name on Member Inquiry." }
+		},
+		{
+			"tool": "finish",
+			"input": {
+				"summary": "Signed on, found member {{memberId}} and read the Share Savings balance and member name.",
+				"finalCheckpoint": { "kind": "text", "text": "Member Inquiry", "frame": "content" },
+				"reason": "Member Inquiry is shown and both outputs are extracted."
+			}
+		}
+	],
+	"onExhausted": "error"
+}

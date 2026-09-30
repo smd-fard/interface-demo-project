@@ -1,0 +1,144 @@
+name: Tests
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  # Re-verify main after every merge, so a green badge on main means main itself is green, not just the
+  # last PR's merge base.
+  push:
+    branches: [main]
+
+# Cancel superseded runs on the same PR to save CI minutes. Workflow-scoped, so a new push cancels every job
+# below rather than leaving orphaned legs running.
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Seconds-cheap guards first. They catch the classes of bug a green test run never notices: a broken
+  # dependency direction (BND001–BND009, including "no LLM on the replay path"), a type error in a file no
+  # test imports, and formatting drift.
+  checks:
+    name: Lint, boundaries, format & typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No `version:` — the action reads the root package.json `packageManager` field (pnpm@10.19.0),
+      # so CI cannot drift from what Corepack gives developers.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Single source of truth shared with engine-strict in package.json.
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ESLint (incl. the per-workspace no-restricted-imports boundary rules and the replay-path ban on
+      # @idp/agent) plus the manifest-level boundary check from tools/repo-checks.
+      - name: Lint + dependency boundaries
+        run: pnpm lint
+
+      - name: Format check
+        run: pnpm format:check
+
+      # Typecheck needs the upstream packages' dist/ .d.ts files (turbo `typecheck` dependsOn ^build).
+      - name: Typecheck
+        run: pnpm typecheck
+
+  # The unit gate: no browser, no network, no model, no API key (tests never call a real LLM).
+  unit:
+    name: Build & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # A build must never modify tracked files (e.g. regenerate the committed JSON Schemas or re-hash a
+      # fixture). If it does, the committed contract and the code have drifted, and the output below names
+      # exactly which files changed.
+      - name: Assert the build left the working tree clean
+        run: |
+          changed="$(git status --porcelain)"
+          if [ -n "$changed" ]; then
+              echo "::error::pnpm build modified the working tree. A build must never touch tracked files."
+              printf '%s\n' "$changed"
+              git --no-pager diff
+              exit 1
+          fi
+          echo "Working tree clean after build."
+
+      - name: Unit tests
+        run: pnpm test
+
+  # The functional gate: real processes and a real headless browser. Each test starts apps/mock-bank as a
+  # separate process on a free port and drives it through the Playwright surface: replay, runtime-condition
+  # fault injection, discovery with the scripted model, the control lease handoff, the CLI and the operator
+  # console. Still no model and no API key.
+  functional:
+    name: Functional tests (mock-bank + headless Chromium)
+    runs-on: ubuntu-latest
+    needs: unit
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Key the browser cache on the resolved Playwright version, so a Playwright bump downloads the
+      # matching Chromium instead of reusing a stale one.
+      - name: Resolve Playwright version
+        id: playwright
+        run: echo "version=$(pnpm --filter @idp/surface exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
+
+      - name: Install Chromium (with OS dependencies)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter @idp/surface exec playwright install --with-deps chromium
+
+      # The browser binary is cached, but its system libraries are not part of the cache.
+      - name: Install Chromium OS dependencies (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter @idp/surface exec playwright install-deps chromium
+
+      - name: Build
+        run: pnpm build
+
+      # One package at a time. Every functional suite spawns mock-bank processes and browsers; running the
+      # packages concurrently oversubscribes the runner and turns timing-sensitive condition tests
+      # (slow_load, session_timeout) into flakes. Within a package, files already run serially
+      # (fileParallelism: false in each vitest.functional.config.ts).
+      - name: Functional tests
+        run: pnpm test:functional --concurrency=1

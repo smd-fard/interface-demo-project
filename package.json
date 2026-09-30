@@ -14,7 +14,12 @@
 		"boundaries": "pnpm --filter @idp/repo-checks check",
 		"format": "prettier --write .",
 		"format:check": "prettier --check .",
-		"clean": "turbo run clean && rimraf .turbo"
+		"clean": "turbo run clean && rimraf .turbo",
+		"test:functional": "turbo run test:functional",
+		"mock-bank": "pnpm --filter @idp/mock-bank start",
+		"idp": "pnpm --filter @idp/cli start --",
+		"operator": "pnpm --filter @idp/operator start",
+		"setup:browsers": "pnpm --filter @idp/surface exec playwright install chromium"
 	},
 	"devDependencies": {
 		"@eslint/js": "catalog:",

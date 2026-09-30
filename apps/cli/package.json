@@ -18,16 +18,19 @@
 		"build": "tsc -b tsconfig.build.json",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
+		"test:functional": "vitest run --config vitest.functional.config.ts",
 		"test:watch": "vitest",
 		"clean": "rimraf dist",
-		"start": "node dist/index.js",
-		"dev": "tsx watch src/index.ts"
+		"start": "node dist/main.js",
+		"dev": "tsx watch src/main.ts"
 	},
 	"dependencies": {
 		"@idp/artifact-schema": "workspace:*",
 		"@idp/session": "workspace:*",
 		"@idp/replay-engine": "workspace:*",
-		"@idp/agent": "workspace:*"
+		"@idp/agent": "workspace:*",
+		"@idp/policy": "workspace:*",
+		"@idp/evidence": "workspace:*"
 	},
 	"devDependencies": {
 		"@idp/typescript-config": "workspace:*",
@@ -35,9 +38,10 @@
 		"rimraf": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:",
-		"tsx": "catalog:"
+		"tsx": "catalog:",
+		"@idp/surface": "workspace:*"
 	},
 	"bin": {
-		"idp": "./dist/index.js"
+		"idp": "./dist/main.js"
 	}
 }

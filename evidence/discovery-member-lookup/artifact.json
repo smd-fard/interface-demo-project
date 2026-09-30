@@ -1,0 +1,504 @@
+{
+	"schemaVersion": "1.0.0",
+	"id": "member-lookup",
+	"version": "1.0.0",
+	"title": "Look up member {{memberId}} and read their current savings balance",
+	"summary": {
+		"does": "Discovered from the goal \"look up member {{memberId}} and read their current savings balance\" on coreone (tenant-a): 7 steps, the first 4 signing on. It commits no irreversible change in the core system.",
+		"needs": "memberId (string, sensitive): The memberId input (declared with --input). The operator credential is resolved at run time from the credential store (mockbank-operator).",
+		"returns": "On success: savingsBalance (decimal, sensitive). Business outcomes: member_not_found, validation_rejected, permission_denied."
+	},
+	"app": {
+		"vendorApp": "coreone",
+		"variant": "tenant-a",
+		"appVersion": "CoreOne 7.4"
+	},
+	"provenance": {
+		"discoveryRunId": "discovery-20260930T033842-7774",
+		"compiledAt": "2026-09-30T03:38:58.858Z",
+		"compilerVersion": "0.1.0",
+		"model": "anthropic:claude-sonnet-5-5",
+		"humanStepIds": []
+	},
+	"credentialRef": "mockbank-operator",
+	"params": [
+		{
+			"name": "memberId",
+			"description": "The memberId input (declared with --input).",
+			"type": {
+				"kind": "string"
+			},
+			"required": true,
+			"sensitive": true
+		}
+	],
+	"outputs": [
+		{
+			"name": "savingsBalance",
+			"description": "The savingsBalance value read from the screen (declared with --output).",
+			"type": {
+				"kind": "decimal",
+				"scale": 2
+			},
+			"sensitive": true
+		}
+	],
+	"steps": [
+		{
+			"id": "s01-open-app",
+			"description": "Open /.",
+			"phase": "login",
+			"risk": "read",
+			"checkpoint": {
+				"kind": "text_present",
+				"text": "Sign On",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"kind": "navigate",
+			"route": "/"
+		},
+		{
+			"id": "s02-fill-user-id",
+			"description": "Type the operator user id from the credential store (mockbank-operator) into textbox \"User ID\".",
+			"phase": "login",
+			"risk": "reversible",
+			"kind": "fill",
+			"target": {
+				"description": "textbox \"User ID\"",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "form_row",
+							"labelText": "User ID",
+							"control": "input"
+						},
+						"rationale": "The control has no accessible name: its label \"User ID\" sits in the adjacent table cell (no <label for>, no id, no ARIA), so role and label rungs cannot find it. Breaks if the row is relabelled.",
+						"surface": {
+							"web": {
+								"cssHint": "input[name=txtUser]"
+							}
+						}
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Sign On",
+							"element": "input",
+							"index": 0
+						},
+						"rationale": "Last resort: element 1 of its kind (input) in the container holding \"Sign On\". Breaks whenever an element of that kind is added or reordered before it."
+					}
+				]
+			},
+			"value": {
+				"kind": "credential",
+				"ref": "mockbank-operator",
+				"field": "username"
+			},
+			"sensitive": true
+		},
+		{
+			"id": "s03-fill-password",
+			"description": "Type the operator password from the credential store (mockbank-operator) into textbox \"Password\".",
+			"phase": "login",
+			"risk": "reversible",
+			"kind": "fill",
+			"target": {
+				"description": "textbox \"Password\"",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "form_row",
+							"labelText": "Password",
+							"control": "input"
+						},
+						"rationale": "The control has no accessible name: its label \"Password\" sits in the adjacent table cell (no <label for>, no id, no ARIA), so role and label rungs cannot find it. Breaks if the row is relabelled.",
+						"surface": {
+							"web": {
+								"cssHint": "input[name=txtPwd]"
+							}
+						}
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Sign On",
+							"element": "input",
+							"index": 1
+						},
+						"rationale": "Last resort: element 2 of its kind (input) in the container holding \"Sign On\". Breaks whenever an element of that kind is added or reordered before it."
+					}
+				]
+			},
+			"value": {
+				"kind": "credential",
+				"ref": "mockbank-operator",
+				"field": "password"
+			},
+			"sensitive": true
+		},
+		{
+			"id": "s04-click-sign-on",
+			"description": "Click button \"Sign On\".",
+			"phase": "login",
+			"risk": "reversible",
+			"checkpoint": {
+				"kind": "text_present",
+				"text": "Member Search",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"kind": "click",
+			"target": {
+				"description": "button \"Sign On\"",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "role",
+						"role": "button",
+						"name": "Sign On",
+						"exact": true,
+						"rationale": "The button is exposed in the accessibility tree with the accessible name \"Sign On\", the most stable signal a legacy screen offers. Breaks only if the button is renamed or loses its role.",
+						"surface": {
+							"web": {
+								"cssHint": "input[name=btnSignOn]"
+							}
+						}
+					},
+					{
+						"kind": "text",
+						"text": "Sign On",
+						"match": "exact",
+						"rationale": "The element's visible caption is \"Sign On\"; an exact match avoids longer texts that contain it. Survives a lost accessibility role; breaks if the caption changes."
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Sign On",
+							"element": "button",
+							"index": 0
+						},
+						"rationale": "Last resort: element 1 of its kind (button) in the container holding \"Sign On\". Breaks whenever an element of that kind is added or reordered before it."
+					}
+				]
+			}
+		},
+		{
+			"id": "s05-fill-member",
+			"description": "Type the memberId param into textbox \"Member #\".",
+			"phase": "main",
+			"risk": "reversible",
+			"kind": "fill",
+			"target": {
+				"description": "textbox \"Member #\"",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "form_row",
+							"labelText": "Member #",
+							"control": "input"
+						},
+						"rationale": "The control has no accessible name: its label \"Member #\" sits in the adjacent table cell (no <label for>, no id, no ARIA), so role and label rungs cannot find it. Breaks if the row is relabelled.",
+						"surface": {
+							"web": {
+								"cssHint": "input[name=txt1]"
+							}
+						}
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Member Search",
+							"element": "input",
+							"index": 0
+						},
+						"rationale": "Last resort: element 1 of its kind (input) in the container holding \"Member Search\". Breaks whenever an element of that kind is added or reordered before it."
+					}
+				]
+			},
+			"value": {
+				"kind": "param",
+				"name": "memberId"
+			},
+			"sensitive": true
+		},
+		{
+			"id": "s06-click-search",
+			"description": "Click button \"Search\".",
+			"phase": "main",
+			"risk": "reversible",
+			"checkpoint": {
+				"kind": "text_present",
+				"text": "Member Inquiry",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"kind": "click",
+			"target": {
+				"description": "button \"Search\"",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "role",
+						"role": "button",
+						"name": "Search",
+						"exact": true,
+						"rationale": "The button is exposed in the accessibility tree with the accessible name \"Search\", the most stable signal a legacy screen offers. Breaks only if the button is renamed or loses its role.",
+						"surface": {
+							"web": {
+								"cssHint": "input[name=btnGo]"
+							}
+						}
+					},
+					{
+						"kind": "text",
+						"text": "Search",
+						"match": "exact",
+						"rationale": "The element's visible caption is \"Search\"; an exact match avoids longer texts that contain it. Survives a lost accessibility role; breaks if the caption changes."
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Member Search",
+							"element": "button",
+							"index": 0
+						},
+						"rationale": "Last resort: element 1 of its kind (button) in the container holding \"Member Search\". Breaks whenever an element of that kind is added or reordered before it."
+					}
+				]
+			}
+		},
+		{
+			"id": "s07-extract-savings-balance",
+			"description": "Read cell next to \"Share Savings\" into the savingsBalance output.",
+			"phase": "main",
+			"risk": "read",
+			"kind": "extract",
+			"target": {
+				"description": "cell next to \"Share Savings\"",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				],
+				"ladder": [
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "table_cell_relative",
+							"headerText": "Share Savings",
+							"direction": "right",
+							"offset": 1
+						},
+						"rationale": "The value sits in the cell right of the label cell \"Share Savings\" in a layout table with no ids or labels; the label text is stable. Breaks if the table is pivoted or a column is inserted between them."
+					},
+					{
+						"kind": "structural",
+						"anchor": {
+							"kind": "nth_in_container",
+							"containerText": "Share Savings",
+							"element": "cell",
+							"index": 1
+						},
+						"rationale": "Last resort: element 2 of its kind (cell) in the container holding \"Share Savings\". Breaks whenever an element of that kind is added or reordered before it."
+					}
+				]
+			},
+			"output": "savingsBalance",
+			"parse": {
+				"kind": "decimal"
+			}
+		}
+	],
+	"successCondition": {
+		"kind": "element_visible",
+		"target": {
+			"description": "cell next to \"Share Savings\"",
+			"frame": [
+				{
+					"kind": "by_name",
+					"name": "content"
+				}
+			],
+			"ladder": [
+				{
+					"kind": "structural",
+					"anchor": {
+						"kind": "table_cell_relative",
+						"headerText": "Share Savings",
+						"direction": "right",
+						"offset": 1
+					},
+					"rationale": "The value sits in the cell right of the label cell \"Share Savings\" in a layout table with no ids or labels; the label text is stable. Breaks if the table is pivoted or a column is inserted between them."
+				},
+				{
+					"kind": "structural",
+					"anchor": {
+						"kind": "nth_in_container",
+						"containerText": "Share Savings",
+						"element": "cell",
+						"index": 1
+					},
+					"rationale": "Last resort: element 2 of its kind (cell) in the container holding \"Share Savings\". Breaks whenever an element of that kind is added or reordered before it."
+				}
+			]
+		}
+	},
+	"outcomeRules": [
+		{
+			"code": "member_not_found",
+			"class": "business_outcome",
+			"description": "No member has this member number.",
+			"signature": {
+				"kind": "text_present",
+				"text": "No records match your search criteria",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"scope": "any_step"
+		},
+		{
+			"code": "validation_rejected",
+			"class": "business_outcome",
+			"description": "CoreOne rejected the member number value as invalid.",
+			"signature": {
+				"kind": "text_present",
+				"text": "Invalid Member Number",
+				"frame": [
+					{
+						"kind": "by_name",
+						"name": "content"
+					}
+				]
+			},
+			"scope": "any_step"
+		},
+		{
+			"code": "permission_denied",
+			"class": "business_outcome",
+			"description": "The operator is not entitled to this function (SEC-403).",
+			"signature": {
+				"kind": "text_present",
+				"text": "SEC-403"
+			},
+			"scope": "any_step"
+		},
+		{
+			"code": "known_dialog",
+			"class": "recoverable",
+			"description": "The scheduled-maintenance notice alert raised when Member Inquiry loads; accepting it is harmless.",
+			"signature": {
+				"kind": "dialog_text",
+				"text": "Scheduled maintenance"
+			},
+			"scope": "any_step",
+			"recovery": {
+				"kind": "dismiss_dialog",
+				"action": "accept"
+			}
+		},
+		{
+			"code": "session_timeout",
+			"class": "recoverable",
+			"description": "The session expired and CoreOne returned to Sign On; sign on again once and resume.",
+			"signature": {
+				"kind": "text_present",
+				"text": "Your session has expired"
+			},
+			"scope": "any_step",
+			"recovery": {
+				"kind": "reauth"
+			}
+		},
+		{
+			"code": "app_error",
+			"class": "failure",
+			"description": "CoreOne showed its server error page.",
+			"signature": {
+				"kind": "any_of",
+				"signatures": [
+					{
+						"kind": "title_matches",
+						"title": "Server Error"
+					},
+					{
+						"kind": "text_present",
+						"text": "Runtime Error"
+					}
+				]
+			},
+			"scope": "any_step"
+		},
+		{
+			"code": "failed_load",
+			"class": "recoverable",
+			"description": "The page failed to load (HTTP 5xx without the app error page); retry the step within budget.",
+			"signature": {
+				"kind": "http_status",
+				"min": 500,
+				"max": 599
+			},
+			"scope": "any_step",
+			"recovery": {
+				"kind": "retry",
+				"max": 2,
+				"backoffMs": 500
+			}
+		}
+	],
+	"contentHash": "sha256:dfff5470abd67c2ff38caa99f5593c2bddc2e7b750d1a3fb0f2f6ced159b46ce"
+}

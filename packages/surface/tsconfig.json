@@ -1,7 +1,8 @@
 {
 	"extends": "@idp/typescript-config/base.json",
 	"compilerOptions": {
-		"noEmit": true
+		"noEmit": true,
+		"lib": ["ES2024", "DOM", "DOM.Iterable"]
 	},
-	"include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts"]
+	"include": ["src/**/*.ts", "test/**/*.ts", "vitest.config.ts", "vitest.functional.config.ts"]
 }

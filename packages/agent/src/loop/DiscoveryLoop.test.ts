@@ -1,0 +1,346 @@
+import type { InterventionId, RunLogEntryInput } from '@idp/artifact-schema';
+import { FakeClock } from '@idp/evidence/testing';
+import { createRedactor, resolvePolicy } from '@idp/policy';
+import type { ApprovalOutcome, EscalationOutcome, SessionHumanAction } from '@idp/session';
+import {
+	ApprovalRequiredError,
+	fingerprintKey,
+	type A11yNode,
+	type ApprovalGrant,
+	type Observation,
+} from '@idp/surface';
+import { FakeSurface, fakeFingerprint, fakeLocation, mockBankPolicyConfig } from '@idp/surface/testing';
+import { describe, expect, it, vi } from 'vitest';
+import { ScriptedModel } from '../model/ScriptedModel.js';
+import type { ModelScriptInput } from '../model/ModelScript.js';
+import { DiscoveryLoop } from './DiscoveryLoop.js';
+import type { DiscoverySession } from './DiscoverySession.js';
+
+const ORIGIN = 'http://bank.test';
+const RUN_ID = 'discovery-20260929T101500-a1b2';
+const REQUEST_ID = 'ir-20260929T101500-beef' as InterventionId;
+const policy = resolvePolicy(mockBankPolicyConfig(ORIGIN));
+const confirm = fakeFingerprint({ name: 'Confirm', visibleText: 'Confirm' });
+const memberInput = fakeFingerprint({
+	role: 'textbox',
+	name: '',
+	tag: 'input',
+	inputType: 'text',
+	labelCellText: 'Member #',
+	container: { element: 'input', index: 0, containerText: 'Member Search' },
+	visibleText: '',
+});
+const grant: ApprovalGrant = {
+	requestId: REQUEST_ID,
+	fingerprintKey: fingerprintKey(confirm),
+	issuedAt: '2026-09-29T10:15:00.000Z',
+	expiresAt: '2026-09-29T10:20:00.000Z',
+	grantedBy: 'operator:ops-1',
+};
+
+/** A screen with one button `e1` in the content frame; `title` makes each screen's digest distinct. */
+function screen(title: string, text = title): Observation {
+	const button: A11yNode = { ref: 'e1', role: 'button', name: 'Confirm', framePath: ['content'], children: [] };
+	return {
+		url: `${ORIGIN}/`,
+		title: 'CoreOne 7.4',
+		frames: [
+			{ path: [], name: '', url: `${ORIGIN}/`, title: 'CoreOne 7.4', status: 200, text: '', textTruncated: false },
+			{
+				path: ['content'],
+				name: 'content',
+				url: `${ORIGIN}/${title.toLowerCase().replace(/\s+/g, '-')}`,
+				title: `CoreOne - ${title}`,
+				status: 200,
+				text,
+				textTruncated: false,
+			},
+		],
+		tree: {
+			role: 'document',
+			name: '',
+			framePath: [],
+			children: [
+				{
+					role: 'iframe',
+					name: '',
+					framePath: [],
+					children: [{ role: 'document', name: '', framePath: ['content'], children: [button] }],
+				},
+			],
+		},
+		pendingDialog: null,
+		lastNavigation: null,
+		digest: title,
+	};
+}
+
+const click = { tool: 'click', target: { ref: 'e1' }, input: { reason: 'Confirm the request.' } };
+const finish = {
+	tool: 'finish',
+	input: {
+		summary: 'Done for {{memberId}}.',
+		finalCheckpoint: { kind: 'text', text: 'Opened', frame: 'content' },
+		reason: 'The confirmation is shown.',
+	},
+};
+const help = { tool: 'request_help', input: { reason: 'I do not know the member number field.' } };
+
+interface Harness {
+	readonly session: DiscoverySession;
+	readonly surface: FakeSurface;
+	readonly logs: RunLogEntryInput[];
+	readonly prompts: { name: string; document: unknown; subdir: string | undefined }[];
+	readonly reacquire: ReturnType<typeof vi.fn>;
+}
+
+function harness(options: {
+	readonly observations: readonly Observation[];
+	readonly approval?: ApprovalOutcome;
+	readonly escalation?: EscalationOutcome;
+	readonly requireApproval?: boolean;
+}): Harness {
+	const logs: RunLogEntryInput[] = [];
+	const prompts: Harness['prompts'] = [];
+	const surface = new FakeSurface({
+		location: fakeLocation(ORIGIN, '/'),
+		observations: options.observations,
+		fingerprint: (target) => (target.kind === 'ref' && target.ref === 'e1' ? confirm : memberInput),
+		onAct: (action) => {
+			if (options.requireApproval === true && action.kind === 'click' && action.approvalGrant === undefined) {
+				throw new ApprovalRequiredError({ actionKind: 'click', reason: 'control name', fingerprint: confirm });
+			}
+			return undefined;
+		},
+	});
+	const reacquire = vi.fn(async () => 'AGENT' as const);
+	const session: DiscoverySession = {
+		surface,
+		runId: RUN_ID,
+		controlUrl: 'http://127.0.0.1:1',
+		evidence: {
+			putJson: vi.fn(async (name: string, document: unknown, subdir?: 'prompts' | 'interventions') => {
+				prompts.push({ name, document, subdir });
+				return {
+					id: name,
+					kind: 'json' as const,
+					path: `${subdir ?? ''}/${name}.json`,
+					sha256: '0'.repeat(64),
+					localOnly: false,
+				};
+			}),
+		} as unknown as DiscoverySession['evidence'],
+		runLog: {
+			log: (entry: RunLogEntryInput) => (logs.push(entry), { ...entry, seq: logs.length }),
+		} as DiscoverySession['runLog'],
+		lease: { reacquire } as unknown as DiscoverySession['lease'],
+		requestApproval: vi.fn(
+			async (): Promise<ApprovalOutcome> => options.approval ?? { kind: 'unattended', requestId: REQUEST_ID },
+		),
+		escalate: vi.fn(
+			async (): Promise<EscalationOutcome> => options.escalation ?? { kind: 'unattended', requestId: REQUEST_ID },
+		),
+	};
+	return { session, surface, logs, prompts, reacquire };
+}
+
+function run(h: Harness, steps: ModelScriptInput['steps']) {
+	const redactor = createRedactor({
+		config: policy,
+		sensitiveValues: [{ value: '12345', paramName: 'memberId' }, 'teller01', 'synthetic-pass-01'],
+	});
+	return DiscoveryLoop.run({
+		goal: 'Open a sub-account for member 12345',
+		exampleInputs: { memberId: '12345' },
+		credentials: { username: 'teller01', password: 'synthetic-pass-01' },
+		session: h.session,
+		model: new ScriptedModel({ scriptVersion: 1, name: 'unit', steps }),
+		redactor,
+		policy,
+		options: { clock: new FakeClock() },
+	});
+}
+
+describe('DiscoveryLoop', () => {
+	it('an irreversible action asks for approval bound to the target, then acts once with the grant', async () => {
+		const h = harness({
+			observations: [screen('Review'), screen('Opened')],
+			requireApproval: true,
+			approval: { kind: 'granted', requestId: REQUEST_ID, grant },
+		});
+		const outcome = await run(h, [click, finish]);
+		expect(outcome.kind).toBe('goal_met');
+		expect(h.session.requestApproval).toHaveBeenCalledWith(
+			expect.objectContaining({ index: 0, fingerprintKey: fingerprintKey(confirm) }),
+		);
+		expect(h.surface.acts.map((action) => action.approvalGrant)).toEqual([undefined, grant]);
+		expect(outcome.trace.steps).toEqual([
+			expect.objectContaining({ actor: 'agent', action: { kind: 'click' }, verdict: 'ok', approved: true }),
+		]);
+		expect(outcome.kind === 'goal_met' && outcome.finalCheckpoint).toEqual({
+			kind: 'text_present',
+			text: 'Opened',
+			frame: [{ kind: 'by_name', name: 'content' }],
+		});
+	});
+
+	it('a rejected approval stops with human_aborted; an unattended one with policy_blocked', async () => {
+		const rejected = await run(
+			harness({
+				observations: [screen('Review')],
+				requireApproval: true,
+				approval: { kind: 'rejected', requestId: REQUEST_ID },
+			}),
+			[click],
+		);
+		expect(rejected).toMatchObject({ kind: 'stopped', reason: 'human_aborted', interventionRequestId: REQUEST_ID });
+		const unattended = await run(harness({ observations: [screen('Review')], requireApproval: true }), [click]);
+		expect(unattended).toMatchObject({ kind: 'stopped', reason: 'policy_blocked', interventionRequestId: REQUEST_ID });
+		expect(unattended.trace.steps).toEqual([
+			expect.objectContaining({ verdict: 'refused', errorCode: 'APPROVAL_REQUIRED' }),
+		]);
+	});
+
+	it('request_help attended: the operator acts, the actions join the trace as human steps, the lease is reacquired', async () => {
+		const humanActions: SessionHumanAction[] = [
+			{
+				seq: 1,
+				kind: 'fill',
+				fingerprint: memberInput,
+				value: '12345',
+				sensitive: true,
+				verdict: 'allow',
+				refused: false,
+				at: '2026-09-29T10:15:01.000Z',
+				operator: 'operator:ops-1',
+			},
+			{
+				seq: 2,
+				kind: 'click',
+				fingerprint: confirm,
+				sensitive: false,
+				verdict: 'allow',
+				refused: false,
+				at: '2026-09-29T10:15:02.000Z',
+				operator: 'operator:ops-1',
+			},
+		];
+		const h = harness({
+			observations: [screen('Member Search'), screen('Opened')],
+			escalation: { kind: 'resumed', requestId: REQUEST_ID, humanActions },
+		});
+		const outcome = await run(h, [help, finish]);
+		expect(outcome.kind).toBe('goal_met');
+		expect(h.reacquire).toHaveBeenCalledOnce();
+		const [fill, human] = outcome.trace.steps;
+		expect(fill).toMatchObject({
+			actor: 'human',
+			operator: 'operator:ops-1',
+			action: { kind: 'fill', value: { kind: 'param', name: 'memberId' }, sensitive: true },
+			verdict: 'ok',
+			diff: null,
+		});
+		expect(human).toMatchObject({ actor: 'human', action: { kind: 'click' }, verdict: 'ok' });
+		expect(human?.diff?.titleChanges[0]?.visibleSegments).toEqual(['Opened']);
+		expect(JSON.stringify(outcome.trace)).not.toContain('12345');
+	});
+
+	it.each(['24680', '900-12-3456'])(
+		'request_help: a sensitive human fill of %s that is no param keeps its sensitivity and never its value',
+		async (value) => {
+			const humanActions: SessionHumanAction[] = [
+				{
+					seq: 1,
+					kind: 'fill',
+					fingerprint: memberInput,
+					value,
+					sensitive: true,
+					verdict: 'allow',
+					refused: false,
+					at: '2026-09-29T10:15:01.000Z',
+					operator: 'operator:ops-1',
+				},
+				{
+					seq: 2,
+					kind: 'click',
+					fingerprint: confirm,
+					sensitive: false,
+					verdict: 'allow',
+					refused: false,
+					at: '2026-09-29T10:15:02.000Z',
+					operator: 'operator:ops-1',
+				},
+			];
+			const h = harness({
+				observations: [screen('Member Search'), screen('Opened')],
+				escalation: { kind: 'resumed', requestId: REQUEST_ID, humanActions },
+			});
+			const outcome = await run(h, [help, finish]);
+			expect(outcome.kind).toBe('goal_met');
+			const [fill] = outcome.trace.steps;
+			expect(fill).toMatchObject({
+				actor: 'human',
+				action: { kind: 'fill', value: { kind: 'literal', value: '[REDACTED]' }, sensitive: true },
+				verdict: 'ok',
+			});
+			expect(JSON.stringify(outcome.trace)).not.toContain(value);
+		},
+	);
+
+	it('request_help: an operator abort stops with human_aborted', async () => {
+		const h = harness({
+			observations: [screen('Member Search')],
+			escalation: { kind: 'aborted', requestId: REQUEST_ID, humanActions: [] },
+		});
+		expect(await run(h, [help])).toMatchObject({ kind: 'stopped', reason: 'human_aborted' });
+	});
+
+	it('refuses to extract into an undeclared output without acting', async () => {
+		const h = harness({ observations: [screen('Member Search'), screen('Member Search 2')] });
+		const outcome = await run(h, [
+			{ tool: 'extract', target: { ref: 'e1' }, input: { output: 'balance', reason: 'Read it.' } },
+			{ tool: 'request_help', input: { reason: 'stuck' } },
+		]);
+		expect(h.surface.acts).toEqual([]);
+		expect(outcome).toMatchObject({ kind: 'stopped', reason: 'model_gave_up' });
+	});
+
+	it('writes one redacted prompt per turn and logs each decision with its reason', async () => {
+		const h = harness({ observations: [screen('Review'), screen('Opened')], approval: undefined });
+		await run(h, [click, finish]);
+		expect(h.prompts.map((prompt) => [prompt.name, prompt.subdir])).toEqual([
+			['turn-01', 'prompts'],
+			['turn-02', 'prompts'],
+		]);
+		const text = JSON.stringify(h.prompts);
+		expect(text).not.toContain('12345');
+		expect(text).toContain('{{memberId}}');
+		const decisions = h.logs.filter((entry) => entry.kind === 'decision');
+		expect(decisions.map((entry) => entry.kind === 'decision' && [entry.tool, entry.reason])).toEqual([
+			['click', 'Confirm the request.'],
+			['finish', 'The confirmation is shown.'],
+		]);
+		expect(h.logs.some((entry) => entry.kind === 'action' && entry.actionKind === 'click')).toBe(true);
+	});
+
+	it('navigates to the target entry route itself before the first observation the model sees', async () => {
+		const h = harness({ observations: [screen('Blank'), screen('Sign On'), screen('Opened')] });
+		const redactor = createRedactor({ sensitiveValues: [] });
+		const outcome = await DiscoveryLoop.run({
+			goal: 'Sign on',
+			target: '/',
+			exampleInputs: {},
+			session: h.session,
+			model: new ScriptedModel({ scriptVersion: 1, name: 'unit', steps: [finish] }),
+			redactor,
+			policy,
+			options: { clock: new FakeClock() },
+		});
+		expect(h.surface.acts[0]).toMatchObject({ kind: 'navigate', route: '/', actor: 'agent' });
+		expect(outcome.trace.steps[0]).toMatchObject({
+			actor: 'agent',
+			action: { kind: 'navigate', route: '/' },
+			verdict: 'ok',
+		});
+	});
+});

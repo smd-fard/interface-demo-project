@@ -9,23 +9,31 @@
 		".": {
 			"types": "./dist/index.d.ts",
 			"import": "./dist/index.js"
-		}
+		},
+		"./schemas/*": "./schemas/*"
 	},
 	"files": [
-		"dist"
+		"dist",
+		"schemas"
 	],
 	"scripts": {
 		"build": "tsc -b tsconfig.build.json",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"test:watch": "vitest",
-		"clean": "rimraf dist"
+		"clean": "rimraf dist",
+		"fixtures:hash": "tsx scripts/hash-fixtures.ts",
+		"schemas:export": "tsx scripts/export-json-schema.ts"
 	},
-	"dependencies": {},
+	"dependencies": {
+		"zod": "catalog:"
+	},
 	"devDependencies": {
 		"@idp/typescript-config": "workspace:*",
 		"@types/node": "catalog:",
+		"prettier": "catalog:",
 		"rimraf": "catalog:",
+		"tsx": "catalog:",
 		"typescript": "catalog:",
 		"vitest": "catalog:"
 	}

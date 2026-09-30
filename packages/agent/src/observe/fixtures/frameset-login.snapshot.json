@@ -1,0 +1,24 @@
+{
+	"frames": [
+		{
+			"path": [],
+			"yaml": "- document:\n  - iframe\n  - iframe\n  - iframe",
+			"childPaths": [["banner"], ["nav"], ["content"]]
+		},
+		{
+			"path": ["banner"],
+			"yaml": "- document:\n  - table:\n    - rowgroup:\n      - row \"CoreOne 7.4\":\n        - cell \"CoreOne 7.4\"",
+			"childPaths": []
+		},
+		{
+			"path": ["nav"],
+			"yaml": "- document:\n  - link \"Member Search\":\n    - /url: /member/search\n  - link \"Sign Off\":\n    - /url: /logout",
+			"childPaths": []
+		},
+		{
+			"path": ["content"],
+			"yaml": "- document:\n  - table:\n    - rowgroup:\n      - row \"Sign On\":\n        - cell \"Sign On\"\n      - row \"User ID teller01 Password Sign On\":\n        - cell \"User ID teller01 Password Sign On\":\n          - table:\n            - rowgroup:\n              - row \"User ID teller01\":\n                - cell \"User ID\"\n                - cell \"teller01\":\n                  - textbox: teller01\n              - row \"Password\":\n                - cell \"Password\"\n                - cell:\n                  - textbox\n              - row \"Sign On\":\n                - cell\n                - cell \"Sign On\":\n                  - button \"Sign On\"\n  - paragraph:\n    - text: Need help?\n    - link \"Help\":\n      - /url: /help",
+			"childPaths": []
+		}
+	]
+}
